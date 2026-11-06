@@ -10,7 +10,7 @@ AI that compiles grant agreements into enforceable spend rules and checks expens
 - Every LLM call goes through shared/llm.py (response cache by prompt hash, structured logging, retry caps, temperature 0 for extraction/classification).
 
 ## Layout and ownership
-- /contracts   shared schemas (Pydantic v2 + exported JSON Schema). Changes need all 3 approvals; bump SCHEMA_VERSION.
+- /contracts   shared schemas (Pydantic v2 + exported JSON Schema). Bump SCHEMA_VERSION and run `make schema` on every change; tell the team.
 - /shared      LLM client wrapper, cache, logging, config. Owner: A.
 - /compiler    Owner: A
 - /enforce     Owner: B
@@ -21,7 +21,7 @@ AI that compiles grant agreements into enforceable spend rules and checks expens
 
 ## Conventions
 - Python 3.12, uv, FastAPI, Pydantic v2, SQLAlchemy 2, pytest, hypothesis, ruff, pyright. Next.js + TypeScript + Tailwind in /web.
-- Branches: a/<task>, b/<task>, c/<task>. Never push to main. Small PRs, squash merge.
-- Never edit another owner's directory or /contracts without asking. Write tests first for evaluator and citation verifier.
-- Run `make check` (ruff + pyright + pytest) before every commit.
+- Commit and push straight to main; no branches, PRs, or reviews. Keep commits small. `git pull --rebase` before pushing.
+- Never edit another owner's directory without asking. Write tests first for evaluator and citation verifier.
+- Run `make check` (ruff + pyright + pytest) before every commit. Main must stay green.
 - Record non-obvious decisions in docs/DECISIONS.md (one line each: date, decision, why).
