@@ -1,4 +1,4 @@
-.PHONY: install check lint format typecheck test
+.PHONY: install check lint format typecheck test schema
 
 install:
 	uv sync
@@ -18,3 +18,6 @@ typecheck:
 
 test:
 	uv run pytest
+
+schema:
+	uv run python -m contracts.export
