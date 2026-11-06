@@ -1,0 +1,35 @@
+import io
+
+from pydantic import BaseModel
+from pypdf import PdfReader
+
+
+class ExtractedPage(BaseModel):
+    page_number: int
+    raw_text: str
+    char_count: int
+    is_ocr: bool = False
+
+
+def extract_pdf_pages(pdf_bytes: bytes) -> list[ExtractedPage]:
+    """Extract page text from PDF bytes with character offsets and page numbers.
+
+    Returns 1-indexed ExtractedPage objects.
+    """
+    reader = PdfReader(io.BytesIO(pdf_bytes))
+    pages: list[ExtractedPage] = []
+
+    for i, page in enumerate(reader.pages, start=1):
+        text = page.extract_text() or ""
+        # Normalize carriage returns while preserving indices
+        normalized_text = text.replace("\r\n", "\n")
+        pages.append(
+            ExtractedPage(
+                page_number=i,
+                raw_text=normalized_text,
+                char_count=len(normalized_text),
+                is_ocr=False,
+            )
+        )
+
+    return pages

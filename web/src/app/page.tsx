@@ -1,3 +1,4 @@
+import { InteractiveStudio } from "@/components/studio";
 import { VerdictBadge, VerdictDemo } from "@/components/verdict-demo";
 
 const REPO_URL = "https://github.com/mihikaGarg/Fineprint";
@@ -75,6 +76,9 @@ export default function Home() {
       <header className="mx-auto flex max-w-6xl items-center justify-between px-4 py-5 sm:px-6">
         <Wordmark />
         <nav className="flex items-center gap-5 text-sm">
+          <a href="#studio" className="font-medium text-ink hover:underline">
+            Live Studio
+          </a>
           <a href="#how" className="hidden text-ink-muted hover:text-ink sm:inline">
             How it works
           </a>
@@ -106,8 +110,14 @@ export default function Home() {
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <a
-                href="#how"
+                href="#studio"
                 className="rounded-full bg-ink px-6 py-3 text-sm font-medium text-paper hover:opacity-90"
+              >
+                Launch Live Studio
+              </a>
+              <a
+                href="#how"
+                className="rounded-full border border-rule px-6 py-3 text-sm font-medium hover:border-ink"
               >
                 See how it works
               </a>
@@ -120,6 +130,20 @@ export default function Home() {
             </div>
           </div>
           <VerdictDemo />
+        </section>
+
+        {/* Live Interactive Studio Section */}
+        <section id="studio" className="border-t border-rule bg-paper py-20">
+          <div className="mx-auto max-w-6xl px-4 sm:px-6">
+            <div className="mb-8 max-w-2xl">
+              <h2 className="font-serif text-4xl sm:text-5xl">Live Compliance Studio</h2>
+              <p className="mt-3 text-ink-muted">
+                Upload any grant agreement PDF or use the bundled award to inspect verified clauses
+                and test spend rules with instant deterministic feedback.
+              </p>
+            </div>
+            <InteractiveStudio />
+          </div>
         </section>
 
         <section id="how" className="border-t border-rule py-20">
