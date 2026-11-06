@@ -1,0 +1,62 @@
+@import "tailwindcss";
+
+:root {
+  --paper: #f7f4ec;
+  --paper-raised: #fffdf7;
+  --ink: #16181d;
+  --ink-muted: #5b5f68;
+  --rule: #ddd6c6;
+  --highlight: #f6e27a;
+  --allowed: #1f7a4d;
+  --allowed-bg: #e3f2e8;
+  --blocked: #b42318;
+  --blocked-bg: #fbe5e2;
+  --review: #a15c07;
+  --review-bg: #fcefd6;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #121317;
+    --paper-raised: #1b1d22;
+    --ink: #ecebe6;
+    --ink-muted: #a2a5ad;
+    --rule: #2e3138;
+    --highlight: #6b5c12;
+    --allowed: #5fd39a;
+    --allowed-bg: #16301f;
+    --blocked: #ff8a7a;
+    --blocked-bg: #3a1a17;
+    --review: #f4b860;
+    --review-bg: #36270f;
+  }
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-paper-raised: var(--paper-raised);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-rule: var(--rule);
+  --color-highlight: var(--highlight);
+  --color-allowed: var(--allowed);
+  --color-allowed-bg: var(--allowed-bg);
+  --color-blocked: var(--blocked);
+  --color-blocked-bg: var(--blocked-bg);
+  --color-review: var(--review);
+  --color-review-bg: var(--review-bg);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-serif: var(--font-newsreader);
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+mark {
+  background: linear-gradient(transparent 12%, var(--highlight) 12%, var(--highlight) 88%, transparent 88%);
+  color: inherit;
+  padding: 0 0.1em;
+}
