@@ -22,7 +22,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["contracts", "shared", "compiler", "enforce"]
+packages = ["contracts", "shared", "compiler", "enforce", "api"]
 
 [tool.ruff]
 line-length = 100
@@ -33,12 +33,13 @@ extend-exclude = ["web"]
 select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
 
 [tool.pyright]
-include = ["contracts", "shared", "compiler", "enforce", "evals"]
+include = ["contracts", "shared", "compiler", "enforce", "evals", "api"]
 pythonVersion = "3.12"
 typeCheckingMode = "strict"
 venvPath = "."
 venv = ".venv"
 
 [tool.pytest.ini_options]
-testpaths = ["contracts", "shared", "compiler", "enforce", "evals"]
+pythonpath = ["."]
+testpaths = ["contracts", "shared", "compiler", "enforce", "evals", "api"]
 addopts = "-q"
