@@ -74,6 +74,7 @@ def build_prompt(pages: dict[int, str]) -> str:
 def make_llm_proposer(
     transport: Transport = anthropic_transport,
     effort: Effort = "medium",
+    cache: bool = True,
 ) -> Callable[[dict[int, str]], Proposal]:
     def propose(pages: dict[int, str]) -> Proposal:
         request = LLMRequest(
@@ -82,7 +83,7 @@ def make_llm_proposer(
             schema=RULES_SCHEMA,
             effort=effort,
         )
-        data = complete_json(request, transport=transport)
+        data = complete_json(request, transport=transport, cache=cache)
         try:
             items: list[dict[str, Any]] = data["rules"]
         except (KeyError, TypeError) as e:

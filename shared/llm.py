@@ -120,10 +120,18 @@ def anthropic_transport(request: LLMRequest) -> LLMResponse:
     )
 
 
-def complete_json(request: LLMRequest, transport: Transport = anthropic_transport) -> Any:
-    """Run a request (or return its cached result) and parse the JSON output."""
+def complete_json(
+    request: LLMRequest,
+    transport: Transport = anthropic_transport,
+    *,
+    cache: bool = True,
+) -> Any:
+    """Run a request (or return its cached result) and parse the JSON output.
+
+    Pass cache=False for replayed or fake answers so they never enter the real cache.
+    """
     key = request.cache_key()
-    cached = get_cached_response(key)
+    cached = get_cached_response(key) if cache else None
     if cached is not None:
         logger.info("llm cache hit key=%s model=%s", key[:12], request.model)
         return json.loads(cached)
@@ -145,7 +153,8 @@ def complete_json(request: LLMRequest, transport: Transport = anthropic_transpor
     except json.JSONDecodeError as e:
         raise LLMError("Model output was not valid JSON") from e
 
-    set_cached_response(key, response.text)
+    if cache:
+        set_cached_response(key, response.text)
     return data
 
 

@@ -1,4 +1,4 @@
-.PHONY: install check lint format typecheck test api web
+.PHONY: install check lint format typecheck test api web report report-dry report-replay
 
 install:
 	uv sync
@@ -24,3 +24,12 @@ api:
 
 web:
 	npm --prefix web run dev
+
+report:
+	uv run python -m compiler.report --mode keyword
+
+report-dry:
+	uv run python -m compiler.report --mode dry-run
+
+report-replay:
+	uv run python -m compiler.report --mode replay --replay fixtures/llm_replays/sample_grant.json

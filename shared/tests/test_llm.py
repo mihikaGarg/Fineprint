@@ -76,3 +76,12 @@ def test_response_is_json_round_trippable() -> None:
         )
         == payload
     )
+
+
+def test_cache_false_neither_reads_nor_writes() -> None:
+    request = LLMRequest(system="s", prompt="replayed", schema=SCHEMA)
+    fake = FakeTransport('{"ok": false}')
+    assert complete_json(request, fake, cache=False) == {"ok": False}
+    real = FakeTransport('{"ok": true}')
+    assert complete_json(request, real) == {"ok": True}
+    assert real.calls == 1
