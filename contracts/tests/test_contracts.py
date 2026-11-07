@@ -19,7 +19,7 @@ from contracts import (
 
 def test_schema_version_is_semver() -> None:
     assert len(SCHEMA_VERSION.split(".")) == 3
-    assert SCHEMA_VERSION == "0.2.0"
+    assert SCHEMA_VERSION == "0.3.0"
 
 
 def test_verdict_values() -> None:
@@ -66,7 +66,7 @@ def test_models_json_serialization() -> None:
         page=7,
         quote="Domestic travel necessary to carry out the project is an allowable cost",
         char_start=120,
-        char_end=194,
+        char_end=191,
     )
     rule = SpendRule(
         id="rule_travel",
@@ -101,3 +101,24 @@ def test_models_json_serialization() -> None:
     assert restored.verdict == Verdict.ALLOWED
     assert len(restored.traces) == 1
     assert restored.traces[0].citation.page == 7
+
+
+def test_citation_requires_offsets_matching_quote() -> None:
+    with pytest.raises(ValidationError):
+        RuleCitation.model_validate({"page": 1, "quote": "Alcohol is unallowable."})
+    with pytest.raises(ValidationError):
+        RuleCitation(page=1, quote="Alcohol is unallowable.", char_start=0, char_end=5)
+
+
+@pytest.mark.parametrize("amount", [12.5, 12.0, "1250"])
+def test_money_rejects_non_integers(amount: object) -> None:
+    with pytest.raises(ValidationError):
+        Expense.model_validate(
+            {
+                "id": "e1",
+                "amount_cents": amount,
+                "date": "2026-01-01",
+                "merchant": "X",
+                "category": "supplies",
+            }
+        )

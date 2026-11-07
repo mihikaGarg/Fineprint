@@ -9,8 +9,8 @@ type Outcome = "PASS" | "FAIL" | "ESCALATE";
 interface Citation {
   page: number;
   quote: string;
-  char_start?: number;
-  char_end?: number;
+  char_start: number;
+  char_end: number;
   prefix?: string;
   suffix?: string;
 }
@@ -43,18 +43,24 @@ interface EnforcementResult {
   latency_ms: number;
 }
 
-const API_BASE = "http://localhost:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
+const API_OFFLINE = "Can't reach the Fineprint API. Start it with `make api` (port 8000).";
 
-const DEFAULT_BUDGET = {
-  lines: {
-    travel_domestic: { category: "travel_domestic", allocated_cents: 800000, spent_cents: 320000 },
-    equipment: { category: "equipment", allocated_cents: 2000000, spent_cents: 0 },
-  },
-};
+interface BudgetState {
+  lines: Record<string, { category: string; allocated_cents: number; spent_cents: number }>;
+}
+
+/** "412.5" -> 41250. Parses digits only; never goes through floating point. */
+function parseDollarsToCents(input: string): number | null {
+  const match = /^\s*\$?(\d{1,9})(?:\.(\d{1,2}))?\s*$/.exec(input.replace(/,/g, ""));
+  if (!match) return null;
+  return Number(match[1]) * 100 + Number((match[2] ?? "").padEnd(2, "0"));
+}
 
 export function InteractiveStudio() {
   const [ruleset, setRuleset] = useState<Ruleset | null>(null);
-  const [budget] = useState(DEFAULT_BUDGET);
+  const [budget, setBudget] = useState<BudgetState | null>(null);
+  const [error, setError] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<string>("");
 
@@ -71,72 +77,19 @@ export function InteractiveStudio() {
   const [evaluating, setEvaluating] = useState(false);
   const [activeCitation, setActiveCitation] = useState<Citation | null>(null);
 
-  // Load default fixtures on mount
+  // Load the sample grant from the API on mount
   useEffect(() => {
     fetch(`${API_BASE}/api/fixtures`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.ruleset) {
-          setRuleset(data.ruleset);
-          if (data.ruleset.rules?.[0]?.citation) {
-            setActiveCitation(data.ruleset.rules[0].citation);
-          }
-        }
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
       })
-      .catch(() => {
-        // Fallback demo ruleset if API server is not running
-        const fallbackRuleset: Ruleset = {
-          grant_id: "grant_bbs_2026",
-          grant_name: "Ramp x BBS Innovation Award (Local Mode)",
-          rules: [
-            {
-              id: "r1",
-              name: "Period of performance",
-              rule_type: "period_of_performance",
-              citation: {
-                page: 2,
-                quote: "The period of performance shall be from January 1, 2026 through December 31, 2026.",
-              },
-              params: { start_date: "2026-01-01", end_date: "2026-12-31" },
-            },
-            {
-              id: "r2",
-              name: "Category prohibition",
-              rule_type: "category_prohibition",
-              citation: {
-                page: 12,
-                quote: "Costs of alcoholic beverages are unallowable under this award.",
-                prefix: "§6.1 Unallowable costs. ",
-              },
-              params: { prohibited_categories: ["alcohol", "entertainment"] },
-            },
-            {
-              id: "r3",
-              name: "Travel budget line",
-              rule_type: "budget_limit",
-              citation: {
-                page: 7,
-                quote: "Domestic travel necessary to carry out the project is an allowable cost, subject to the approved budget.",
-                prefix: "§4.2 ",
-              },
-              params: { budget_line: "travel_domestic" },
-            },
-            {
-              id: "r4",
-              name: "Equipment prior approval",
-              rule_type: "threshold_approval",
-              citation: {
-                page: 15,
-                quote: "Capital expenditures for special purpose equipment having a unit cost of $5,000 or more require prior written approval.",
-                prefix: "§8.3 Equipment. ",
-              },
-              params: { category: "equipment", threshold_cents: 500000 },
-            },
-          ],
-        };
-        setRuleset(fallbackRuleset);
-        setActiveCitation(fallbackRuleset.rules[0].citation);
-      });
+      .then((data: { ruleset: Ruleset; budget: BudgetState }) => {
+        setRuleset(data.ruleset);
+        setBudget(data.budget);
+        if (data.ruleset.rules[0]) setActiveCitation(data.ruleset.rules[0].citation);
+      })
+      .catch(() => setError(API_OFFLINE));
   }, []);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -173,10 +126,16 @@ export function InteractiveStudio() {
   };
 
   const handleRunEnforcement = async () => {
-    if (!ruleset) return;
+    if (!ruleset || !budget) return;
 
+    const amountCents = parseDollarsToCents(dollars);
+    if (amountCents === null || amountCents === 0) {
+      setError("Enter an amount like 412.00");
+      return;
+    }
+
+    setError("");
     setEvaluating(true);
-    const amountCents = Math.round(parseFloat(dollars || "0") * 100);
 
     const expensePayload = {
       id: "exp_studio",
@@ -199,67 +158,22 @@ export function InteractiveStudio() {
         }),
       });
 
-      if (res.ok) {
-        const data: EnforcementResult = await res.json();
-        setResult(data);
-        if (data.traces[0]?.citation) {
-          setActiveCitation(data.traces[0].citation);
-        }
+      if (!res.ok) {
+        setResult(null);
+        setError(`The API rejected this expense (HTTP ${res.status}).`);
         return;
       }
+      const data: EnforcementResult = await res.json();
+      setResult(data);
+      // Show the clause that decided the verdict, not just the first rule checked.
+      const deciding =
+        data.traces.find((t) => t.outcome === "FAIL") ??
+        data.traces.find((t) => t.outcome === "ESCALATE") ??
+        data.traces[0];
+      if (deciding) setActiveCitation(deciding.citation);
     } catch {
-      // Fallback client-side evaluator for seamless local demo without backend
-      const traces: RuleTrace[] = [];
-      let verdict: Verdict = "ALLOWED";
-
-      for (const rule of ruleset.rules) {
-        if (rule.rule_type === "period_of_performance") {
-          traces.push({
-            rule_id: rule.id,
-            rule_name: rule.name,
-            outcome: "PASS",
-            reason: "Within Jan 1 – Dec 31, 2026",
-            citation: rule.citation,
-          });
-        } else if (rule.rule_type === "category_prohibition") {
-          const isProhibited = category === "alcohol" || category === "entertainment";
-          traces.push({
-            rule_id: rule.id,
-            rule_name: rule.name,
-            outcome: isProhibited ? "FAIL" : "PASS",
-            reason: isProhibited ? `Category '${category}' is prohibited` : `Category '${category}' allowable`,
-            citation: rule.citation,
-          });
-          if (isProhibited) verdict = "BLOCKED";
-        } else if (rule.rule_type === "threshold_approval" && category === "equipment") {
-          if (amountCents >= 500000) {
-            traces.push({
-              rule_id: rule.id,
-              rule_name: rule.name,
-              outcome: hasApproval ? "PASS" : "ESCALATE",
-              reason: hasApproval ? "Exceeds $5,000 with sponsor approval" : "Exceeds $5,000 without prior approval",
-              citation: rule.citation,
-            });
-            if (!hasApproval && verdict !== "BLOCKED") verdict = "NEEDS_REVIEW";
-          }
-        } else if (rule.rule_type === "budget_limit" && category === "travel_domestic") {
-          const exceeds = 320000 + amountCents > 800000;
-          traces.push({
-            rule_id: rule.id,
-            rule_name: rule.name,
-            outcome: exceeds ? "FAIL" : "PASS",
-            reason: exceeds ? "Exceeds $8,000 travel budget" : `$${((320000 + amountCents) / 100).toLocaleString()} of $8,000 used`,
-            citation: rule.citation,
-          });
-          if (exceeds) verdict = "BLOCKED";
-        }
-      }
-
-      setResult({
-        verdict,
-        traces,
-        latency_ms: 1.2,
-      });
+      setResult(null);
+      setError(API_OFFLINE);
     } finally {
       setEvaluating(false);
     }
@@ -279,7 +193,7 @@ export function InteractiveStudio() {
         <div>
           <span className="font-mono text-xs uppercase tracking-wider text-ink-muted">Interactive Studio</span>
           <h2 className="font-serif text-3xl font-medium tracking-tight">
-            {ruleset ? ruleset.grant_name : "Loading Grant..."}
+            {ruleset ? ruleset.grant_name : error ? "Grant unavailable" : "Loading grant…"}
           </h2>
         </div>
 
@@ -301,6 +215,12 @@ export function InteractiveStudio() {
       {uploadStatus && (
         <div className="mb-6 rounded-lg bg-paper px-4 py-2 text-xs text-ink-muted">
           {uploadStatus}
+        </div>
+      )}
+
+      {error && (
+        <div role="alert" className="mb-6 rounded-lg bg-blocked-bg px-4 py-2 text-xs text-blocked">
+          {error}
         </div>
       )}
 

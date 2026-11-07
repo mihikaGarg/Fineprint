@@ -13,10 +13,9 @@ app = FastAPI(title="Fineprint API", version="0.2.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
 )
 
 
@@ -42,8 +41,8 @@ def health() -> dict[str, str]:
 @app.get("/api/fixtures")
 def get_fixtures() -> dict[str, Any]:
     return {
-        "ruleset": SAMPLE_RULESET.model_dump(),
-        "budget": SAMPLE_BUDGET.model_dump(),
+        "ruleset": SAMPLE_RULESET.model_dump(mode="json"),
+        "budget": SAMPLE_BUDGET.model_dump(mode="json"),
         "expenses": SAMPLE_EXPENSES,
         "pages": SAMPLE_PAGES,
     }

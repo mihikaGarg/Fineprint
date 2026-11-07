@@ -11,11 +11,11 @@ from contracts.models import (
 
 
 def _format_cents(cents: int) -> str:
-    """Format integer cents as dollars, omitting trailing .00 if whole."""
-    dollars = cents / 100
-    if cents % 100 == 0:
-        return f"${int(dollars):,}"
-    return f"${dollars:,.2f}"
+    """Format integer cents as dollars, omitting trailing .00 if whole. No float math."""
+    dollars, rem = divmod(cents, 100)
+    if rem == 0:
+        return f"${dollars:,}"
+    return f"${dollars:,}.{rem:02d}"
 
 
 def _parse_date(val: Any) -> date:
@@ -152,7 +152,8 @@ def evaluate_rule(
         threshold_cents = int(params.get("threshold_cents", 0))
         requirement = params.get("requirement", "prior written approval")
 
-        if expense.amount_cents > threshold_cents:
+        # Clauses read "$X or more", so the threshold itself triggers approval.
+        if expense.amount_cents >= threshold_cents:
             if expense.has_prior_approval:
                 return RuleTrace(
                     rule_id=rule.id,
@@ -175,7 +176,8 @@ def evaluate_rule(
             rule_name=rule.name,
             outcome=RuleOutcome.PASS,
             reason=(
-                f"Amount {_format_cents(expense.amount_cents)} does not exceed approval threshold"
+                f"Amount {_format_cents(expense.amount_cents)} is below the "
+                f"{_format_cents(threshold_cents)} approval threshold"
             ),
             citation=rule.citation,
         )

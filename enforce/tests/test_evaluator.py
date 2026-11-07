@@ -14,12 +14,16 @@ from contracts import (
 from enforce import evaluate_expense
 
 
+def _cite(page: int, quote: str, prefix: str = "") -> RuleCitation:
+    return RuleCitation(page=page, quote=quote, char_start=0, char_end=len(quote), prefix=prefix)
+
+
 def _build_sample_ruleset() -> Ruleset:
     period_rule = SpendRule(
         id="rule_pop",
         name="Period of performance",
         rule_type="period_of_performance",
-        citation=RuleCitation(
+        citation=_cite(
             page=2,
             quote=(
                 "The period of performance shall be from January 1, 2026 through December 31, 2026."
@@ -32,7 +36,7 @@ def _build_sample_ruleset() -> Ruleset:
         id="rule_alcohol",
         name="Category prohibition",
         rule_type="category_prohibition",
-        citation=RuleCitation(
+        citation=_cite(
             page=12,
             quote="Costs of alcoholic beverages are unallowable under this award.",
             prefix="§6.1 Unallowable costs. ",
@@ -44,7 +48,7 @@ def _build_sample_ruleset() -> Ruleset:
         id="rule_travel_budget",
         name="Travel budget line",
         rule_type="budget_limit",
-        citation=RuleCitation(
+        citation=_cite(
             page=7,
             quote=(
                 "Domestic travel necessary to carry out the project is an allowable cost, "
@@ -59,7 +63,7 @@ def _build_sample_ruleset() -> Ruleset:
         id="rule_equipment_budget",
         name="Equipment budget line",
         rule_type="budget_limit",
-        citation=RuleCitation(
+        citation=_cite(
             page=15,
             quote="Equipment expenditures are allowable up to the approved line item budget.",
             prefix="§8.1 ",
@@ -71,7 +75,7 @@ def _build_sample_ruleset() -> Ruleset:
         id="rule_equipment_approval",
         name="Equipment prior approval",
         rule_type="threshold_approval",
-        citation=RuleCitation(
+        citation=_cite(
             page=15,
             quote=(
                 "Capital expenditures for special purpose equipment having a unit cost of "
@@ -300,3 +304,26 @@ def test_latency_microbenchmark() -> None:
     avg_ms = ((t1 - t0) / n_runs) * 1000.0
     # Strict benchmark: must be well under 5ms (contract requires <100ms)
     assert avg_ms < 5.0, f"Average latency too high: {avg_ms:.3f}ms"
+
+
+def test_threshold_is_inclusive() -> None:
+    """ "$5,000 or more" means exactly $5,000 needs approval."""
+    expense = Expense(
+        id="exp_boundary",
+        amount_cents=500_000,
+        date=date(2026, 7, 1),
+        merchant="Meridian Optics",
+        category="equipment",
+    )
+    result = evaluate_expense(expense, _build_sample_ruleset(), _build_sample_budget())
+    trace = next(t for t in result.traces if t.rule_id == "rule_equipment_approval")
+    assert trace.outcome == RuleOutcome.ESCALATE
+    assert result.verdict == Verdict.NEEDS_REVIEW
+
+
+def test_money_formatting_has_no_float_rounding() -> None:
+    from enforce.rules import _format_cents  # pyright: ignore[reportPrivateUsage]
+
+    assert _format_cents(123_456_789_01) == "$123,456,789.01"
+    assert _format_cents(500_000) == "$5,000"
+    assert _format_cents(5) == "$0.05"

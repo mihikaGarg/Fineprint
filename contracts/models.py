@@ -1,8 +1,8 @@
 from datetime import date
 from enum import StrEnum
-from typing import Any
+from typing import Any, Self
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, StrictInt, field_validator, model_validator
 
 from contracts.verdict import Verdict
 
@@ -14,17 +14,25 @@ class RuleOutcome(StrEnum):
 
 
 class RuleCitation(BaseModel):
-    page: int
-    quote: str
-    char_start: int | None = None
-    char_end: int | None = None
+    """Verbatim clause span: page_text[char_start:char_end] == quote on a 1-based page."""
+
+    page: int = Field(ge=1)
+    quote: str = Field(min_length=1)
+    char_start: int = Field(ge=0)
+    char_end: int = Field(ge=1)
     prefix: str = ""
     suffix: str = ""
+
+    @model_validator(mode="after")
+    def _span_matches_quote(self) -> Self:
+        if self.char_end - self.char_start != len(self.quote):
+            raise ValueError("char_end - char_start must equal len(quote)")
+        return self
 
 
 class Expense(BaseModel):
     id: str
-    amount_cents: int
+    amount_cents: StrictInt
     date: date
     merchant: str
     category: str
@@ -41,8 +49,8 @@ class Expense(BaseModel):
 
 class BudgetLine(BaseModel):
     category: str
-    allocated_cents: int
-    spent_cents: int = 0
+    allocated_cents: StrictInt
+    spent_cents: StrictInt = 0
 
     @field_validator("allocated_cents", "spent_cents")
     @classmethod
@@ -67,7 +75,7 @@ class SpendRule(BaseModel):
 class Ruleset(BaseModel):
     grant_id: str
     grant_name: str
-    rules: list[SpendRule] = Field(default_factory=list)
+    rules: list[SpendRule] = Field(default_factory=list[SpendRule])
 
 
 class RuleTrace(BaseModel):
@@ -80,5 +88,5 @@ class RuleTrace(BaseModel):
 
 class EnforcementResult(BaseModel):
     verdict: Verdict
-    traces: list[RuleTrace] = Field(default_factory=list)
+    traces: list[RuleTrace] = Field(default_factory=list[RuleTrace])
     latency_ms: float = 0.0

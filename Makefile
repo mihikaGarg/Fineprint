@@ -1,4 +1,4 @@
-.PHONY: install check lint format typecheck test
+.PHONY: install check lint format typecheck test api web
 
 install:
 	uv sync
@@ -18,3 +18,9 @@ typecheck:
 
 test:
 	uv run pytest
+
+api:
+	uv run uvicorn api.main:app --reload --port 8000
+
+web:
+	npm --prefix web run dev

@@ -16,7 +16,7 @@ from contracts.models import (
 )
 from contracts.verdict import Verdict
 
-SCHEMA_VERSION = "0.2.0"
+SCHEMA_VERSION = "0.3.0"
 
 __all__ = [
     "SCHEMA_VERSION",
