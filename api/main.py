@@ -31,6 +31,7 @@ class CompileResponse(BaseModel):
     total_extracted: int
     verified_count: int
     rejected_count: int
+    proposer: str
 
 
 @app.get("/api/health")
@@ -66,7 +67,7 @@ async def compile_endpoint(file: UploadFile = File(...)) -> CompileResponse:  # 
     if not content:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
 
-    ruleset, rejected = compile_grant_pdf(content, grant_name=file.filename)
+    ruleset, rejected, proposer = compile_grant_pdf(content, grant_name=file.filename)
 
     return CompileResponse(
         ruleset=ruleset,
@@ -74,4 +75,5 @@ async def compile_endpoint(file: UploadFile = File(...)) -> CompileResponse:  # 
         total_extracted=len(ruleset.rules) + len(rejected),
         verified_count=len(ruleset.rules),
         rejected_count=len(rejected),
+        proposer=proposer,
     )

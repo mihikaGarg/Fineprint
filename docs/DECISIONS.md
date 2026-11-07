@@ -10,3 +10,8 @@ One line each: date, decision, why.
 - 2026-11-07 — Sample ruleset is compiled from fixture page text by the real compiler — fixture citations are verified by construction.
 - 2026-11-07 — Web studio has no client-side evaluator fallback; if the API is down it says so — a second, divergent evaluator in the UI (with a hard-coded latency) could show verdicts the engine never made.
 - 2026-11-07 — threshold_approval triggers at >= threshold — clauses read "$X or more".
+- 2026-11-07 — The LLM only returns (rule_type, page, verbatim quote); all params are parsed from the quote by derive_params — keeps "LLMs never do arithmetic" and makes every rule checkable.
+- 2026-11-07 — No temperature setting: current Claude models reject sampling params; reproducibility comes from the prompt-hash response cache instead (deviation from CLAUDE.md's "temperature 0").
+- 2026-11-07 — Default model claude-opus-5-5 at effort "medium", overridable via FINEPRINT_LLM_MODEL; server-side fallback ("default") enabled so a refusal re-runs on Anthropic's recommended model.
+- 2026-11-07 — LLM is used for uploads only when ANTHROPIC_API_KEY is set (FINEPRINT_PROPOSER=keyword forces offline); on LLM failure the compile falls back to the keyword proposer and reports it. Fixtures and tests always use the keyword proposer.
+- 2026-11-07 — Root conftest strips ANTHROPIC_API_KEY and redirects the LLM cache for every test; a repo scan test fails on anything shaped like an Anthropic key.
