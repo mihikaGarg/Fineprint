@@ -1,3 +1,4 @@
+import re
 from datetime import date
 from typing import Any
 
@@ -32,6 +33,26 @@ def _format_cents(cents: int) -> str:
 
 
 format_cents = _format_cents
+
+
+# Which expense categories count against each grant budget line.
+BUDGET_LINE_CATEGORIES: dict[str, frozenset[str]] = {
+    "travel_domestic": frozenset(
+        {"travel_domestic", "airfare", "first_class_airfare", "ground_transport", "lodging"}
+    ),
+}
+
+
+def budget_line_for(category: str) -> str:
+    """The budget line an expense category is charged to (defaults to the category)."""
+    return next(
+        (line for line, cats in BUDGET_LINE_CATEGORIES.items() if category in cats), category
+    )
+
+
+def normalize_role(role: str) -> str:
+    """'Finance Director' / 'finance-director' -> 'finance_director'."""
+    return re.sub(r"[\s\-]+", "_", role.strip().lower())
 
 
 def _role_label(role: str) -> str:
@@ -69,7 +90,7 @@ def is_rule_applicable(rule: SpendRule, expense: Expense) -> bool:
     # A budget limit rule applies only to its target budget line or category
     if rule.rule_type == "budget_limit":
         line_key = params.get("budget_line")
-        if line_key and line_key != expense.category and "category" not in params:
+        if line_key and line_key != budget_line_for(expense.category) and "category" not in params:
             return False
 
     return True
@@ -144,7 +165,7 @@ def evaluate_rule(
         )
 
     if rule_type == "budget_limit":
-        line_key = params.get("budget_line", expense.category)
+        line_key = params.get("budget_line", budget_line_for(expense.category))
         line = budget_state.lines.get(line_key)
         if not line:
             return _trace(
@@ -221,7 +242,7 @@ def evaluate_rule(
                 f"{_format_cents(amount)} is below the "
                 f"{_format_cents(threshold_cents)} approval threshold",
             )
-        if role in expense.approvals:
+        if normalize_role(role) in {normalize_role(a) for a in expense.approvals}:
             return _trace(rule, RuleOutcome.PASS, f"Approved by {_role_label(role)}")
         outcome = RuleOutcome.FAIL if params.get("action") == "block" else RuleOutcome.ESCALATE
         return _trace(

@@ -67,6 +67,13 @@ class Expense(BaseModel):
     approvals: list[str] = Field(default_factory=list[str])
     has_receipt: bool = False
 
+    @field_validator("category")
+    @classmethod
+    def validate_category(cls, v: str) -> str:
+        if v not in KNOWN_CATEGORIES:
+            raise ValueError(f"Unknown category '{v}'; use one of {', '.join(KNOWN_CATEGORIES)}")
+        return v
+
     @field_validator("amount_cents")
     @classmethod
     def validate_amount_cents(cls, v: int) -> int:

@@ -432,8 +432,61 @@ def start_session(draft: PolicyDraft, source: str, grants: list[Ruleset]) -> Pol
     return s
 
 
+def _existing_cap(s: PolicySession, category: str) -> SpendRule | None:
+    return next(
+        (
+            r
+            for r in s.ruleset.rules
+            if r.rule_type == "per_item_cap" and (r.params.get("categories") or []) == [category]
+        ),
+        None,
+    )
+
+
+RULE_KEYS = (
+    "prohibited_categories",
+    "cap_cents",
+    "categories",
+    "threshold_cents",
+    "approver_role",
+    "merchants",
+)
+
+
+def _duplicate_of(s: PolicySession, rule: SpendRule) -> SpendRule | None:
+    """An existing rule that says the same thing (ignoring wording and action)."""
+    key = {k: rule.params.get(k) for k in RULE_KEYS}
+    return next(
+        (
+            r
+            for r in s.ruleset.rules
+            if r.id != rule.id
+            and r.rule_type == rule.rule_type
+            and {k: r.params.get(k) for k in RULE_KEYS} == key
+        ),
+        None,
+    )
+
+
 def _ask_next(s: PolicySession) -> None:
     gap = next((g for g in s.gaps if not g.resolved), None)
+    # A vague limit is already settled if that category has a cap (e.g. the user just
+    # chose to check "$350 per night" per charge); don't ask for a second, clashing one.
+    while gap is not None and gap.kind == "vague" and gap.category:
+        existing = _existing_cap(s, gap.category)
+        if existing is None:
+            break
+        gap.resolved = True
+        s.messages.append(
+            ChatMessage(
+                role="assistant",
+                text=(
+                    f'"{gap.quote}" (p. {gap.page}) is already covered: '
+                    f"{describe(existing)}. Skipping it."
+                ),
+            )
+        )
+        gap = next((g for g in s.gaps if not g.resolved), None)
     if gap is None:
         n = len(s.ruleset.rules)
         gap = Gap(
@@ -554,19 +607,33 @@ def reply(
     found = [f for f in found if f["quote"] in sentence]
     added: list[str] = []
     new_gaps: list[Gap] = []
+    duplicates: list[str] = []
     for item in found:
         result = _add_rule(s, item)
         if isinstance(result, str):
             continue
         rule, gaps = result
+        if (existing := _duplicate_of(s, rule)) is not None:
+            s.ruleset = s.ruleset.model_copy(
+                update={"rules": [r for r in s.ruleset.rules if r.id != rule.id]}
+            )
+            duplicates.append(describe(existing))
+            continue
         added.append(describe(rule))
         new_gaps.extend(gaps)
+    if duplicates:
+        s.messages.append(
+            ChatMessage(role="assistant", text="You already have: " + "; ".join(duplicates) + ".")
+        )
     s.gaps = [g for g in s.gaps if not (g.kind == "final" and not g.resolved)]
-    if added:
-        s.approved = False
+    if added or duplicates:
+        s.approved = s.approved and not added
         insert_at = next((i for i, g in enumerate(s.gaps) if not g.resolved), len(s.gaps))
         s.gaps[insert_at:insert_at] = new_gaps
-        s.messages.append(ChatMessage(role="assistant", text="Added: " + "; ".join(added) + "."))
+        if added:
+            s.messages.append(
+                ChatMessage(role="assistant", text="Added: " + "; ".join(added) + ".")
+            )
     else:
         s.messages.append(
             ChatMessage(

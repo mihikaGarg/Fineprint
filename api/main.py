@@ -9,17 +9,17 @@ from pydantic import BaseModel, Field
 
 from compiler.coverage import Coverage
 from compiler.examples import RuleExample, examples_for
-from compiler.extractor import extract_pdf_pages
+from compiler.extractor import UnreadablePdfError, extract_pdf_pages
 from compiler.pipeline import CompileResult, compile_grant_pdf, use_llm
 from compiler.policy import (
     AnswerError,
+    Option,
     PolicyDraft,
     Question,
     apply_answers,
     draft_from_items,
     draft_policy,
     draft_policy_pages,
-    open_question_rule_ids,
 )
 from compiler.policy_chat import PolicySession, ReplyError, reply, start_session
 from compiler.policy_offline import read_policy
@@ -32,6 +32,7 @@ from contracts.models import (
     SpendRule,
 )
 from enforce.engine import evaluate_expense
+from enforce.rules import budget_line_for
 from fixtures.sample_data import SAMPLE_BUDGET, SAMPLE_EXPENSES, SAMPLE_PAGES, SAMPLE_RULESET
 from shared.llm import LLMError, Transport, anthropic_transport, is_configured
 
@@ -199,7 +200,10 @@ async def compile_endpoint(file: UploadFile = File(...)) -> CompileResponse:  # 
     if not content:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
 
-    return _compile_response(compile_grant_pdf(content, grant_name=file.filename))
+    try:
+        return _compile_response(compile_grant_pdf(content, grant_name=file.filename))
+    except UnreadablePdfError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 # --- Company policy assistant -------------------------------------------------
@@ -254,8 +258,25 @@ def policy_answers(draft_id: str, req: AnswersRequest) -> PolicyDraft:
 
 
 def _open_questions(ruleset_id: str) -> list[Question]:
+    """Unanswered questions for a ruleset, from a policy draft or a setup chat."""
     draft = DRAFTS.get(ruleset_id)
-    return draft.questions if draft else []
+    questions = list(draft.questions) if draft else []
+    session = SESSIONS.get(ruleset_id)
+    if session:
+        for gap in session.gaps:
+            if gap.resolved or gap.kind in ("final", "conflict"):
+                continue
+            for rule_id in [gap.rule_id] if gap.rule_id else gap.rule_ids:
+                questions.append(
+                    Question(
+                        id=gap.id,
+                        rule_id=rule_id,
+                        field=gap.field or gap.kind,
+                        question=gap.prompt,
+                        options=[Option(label=o.label, value=o.value) for o in gap.options],
+                    )
+                )
+    return questions
 
 
 @app.get("/api/rulesets/{ruleset_id}", response_model=Ruleset)
@@ -287,7 +308,7 @@ def ruleset_approve(ruleset_id: str, req: ApproveRequest) -> Ruleset:
     """Approve rules so they're enforced. Rules with open questions are skipped."""
     rs = _get_ruleset(ruleset_id)
     draft = DRAFTS.get(ruleset_id)
-    blocked: set[str] = open_question_rule_ids(draft) if draft else set()
+    blocked = {q.rule_id for q in _open_questions(ruleset_id)}
     wanted = set(req.rule_ids) or {r.id for r in rs.rules}
     unknown = wanted - {r.id for r in rs.rules}
     if unknown:
@@ -300,6 +321,9 @@ def ruleset_approve(ruleset_id: str, req: ApproveRequest) -> Ruleset:
     RULESETS[ruleset_id] = updated
     if draft:
         DRAFTS[ruleset_id] = draft.model_copy(update={"ruleset": updated})
+    session = SESSIONS.get(ruleset_id)
+    if session:  # keep the chat's copy in sync so later answers don't undo approvals
+        SESSIONS[ruleset_id] = session.model_copy(update={"ruleset": updated})
     return updated
 
 
@@ -320,7 +344,10 @@ class ReplyRequest(BaseModel):
 
 def _pages_from_upload(filename: str, content: bytes) -> dict[int, str]:
     if filename.lower().endswith(".pdf"):
-        pages = {p.page_number: p.raw_text for p in extract_pdf_pages(content)}
+        try:
+            pages = {p.page_number: p.raw_text for p in extract_pdf_pages(content)}
+        except UnreadablePdfError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
     elif filename.lower().endswith((".txt", ".md")):
         pages = {1: content.decode("utf-8", errors="replace")}
     else:
@@ -519,10 +546,13 @@ def _check(expense: Expense, ruleset_ids: list[str] | None, record: bool) -> Log
         raise HTTPException(status_code=400, detail="No approved rules yet")
     result = evaluate_expense(expense, [_get_ruleset(i) for i in ids], BUDGET)
     spent = False
-    if record and result.verdict.value == "ALLOWED":
-        line = BUDGET.lines.get(expense.category)
+    # Allowed spend comes off the grant budget, but only if a grant was checked.
+    charged_to_grant = any(i not in SESSIONS and i not in DRAFTS for i in ids)
+    if record and charged_to_grant and result.verdict.value == "ALLOWED":
+        line_key = budget_line_for(expense.category)
+        line = BUDGET.lines.get(line_key)
         if line is not None:
-            BUDGET.lines[expense.category] = line.model_copy(
+            BUDGET.lines[line_key] = line.model_copy(
                 update={"spent_cents": line.spent_cents + expense.amount_cents}
             )
             spent = True
