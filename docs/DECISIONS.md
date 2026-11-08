@@ -15,3 +15,17 @@ One line each: date, decision, why.
 - 2026-11-07 — Default model claude-opus-5-5 at effort "medium", overridable via FINEPRINT_LLM_MODEL; server-side fallback ("default") enabled so a refusal re-runs on Anthropic's recommended model.
 - 2026-11-07 — LLM is used for uploads only when ANTHROPIC_API_KEY is set (FINEPRINT_PROPOSER=keyword forces offline); on LLM failure the compile falls back to the keyword proposer and reports it. Fixtures and tests always use the keyword proposer.
 - 2026-11-07 — Root conftest strips ANTHROPIC_API_KEY and redirects the LLM cache for every test; a repo scan test fails on anything shaped like an Anthropic key.
+- 2026-11-07 — Rules have status proposed/approved; only approved rules are enforced, and grant compiles produce proposed rules — nothing AI-extracted blocks a payment before a person approves it (studio auto-approves until the review screen exists).
+- 2026-11-07 — Company policy rules are drafted from the user's own text; the user's sentence is the citation, amounts are parsed by code, enum fields are validated, and anything unclear becomes a multiple-choice question whose answer is recorded on the rule.
+- 2026-11-07 — Several rulesets (grant + company policy) are evaluated together; the strictest outcome wins and each trace records its source. Every FAIL/ESCALATE carries a deterministic "fix" hint.
+- 2026-11-07 — Rule-card examples run the real engine on synthetic expenses, so examples can never disagree with enforcement.
+- 2026-11-07 — Coverage report classifies every clause (rule / flagged / rejected / no rule); the LLM can flag ambiguous clauses, which are verified like rules but never enforced.
+- 2026-11-07 — Rulebook store is in-memory for now (api/main.py RULESETS/DRAFTS); persistence stays with b/persistence.
+- 2026-11-07 — Offline policy reader (compiler/policy_offline.py) handles common phrasings without an API key; its output goes through the same validation as Claude's. Used when no key is set/enabled or Claude fails, and labelled "offline" in the draft.
+- 2026-11-07 — Bare-bones test page served by the API at /playground (make playground) so the policy -> questions -> approve -> enforce flow can be tried without the web app or a key.
+- 2026-11-07 — Policy setup is a chat: the company uploads its existing policy (PDF/text, multi-page), it's read into rules, and the assistant then resolves gaps one at a time (missing details, exceptions, vague wording, unsupported limits, missing topics, grant conflicts). Answers that create rules are written to a "Setup conversation" page that the rules cite, so every rule stays verifiable.
+- 2026-11-07 — Same-type questions are grouped (e.g. one "block or review?" for all approval tiers) to keep big-company setup short.
+- 2026-11-07 — Prohibitions with "except/unless" can be set to review instead of block; categories are read only from the rule clause, not its exception.
+- 2026-11-07 — Added airfare and ground_transport categories so flight and taxi rules don't collide with general travel budget lines.
+- 2026-11-07 — Full working app served by the API at /app (overview, grants with coverage, policy chat, rulebook, expenses with live budget and history) so the whole flow can be demoed without the Next.js app or a key; the Next.js UI is still where the polished version will live.
+- 2026-11-07 — Allowed expenses spend the grant budget line matching their category; app state (rulebooks, log, budget) is in memory with POST /api/reset for a fresh demo.

@@ -4,6 +4,7 @@ Changes need all 3 approvals; bump SCHEMA_VERSION on every change.
 """
 
 from contracts.models import (
+    KNOWN_CATEGORIES,
     BudgetLine,
     BudgetState,
     EnforcementResult,
@@ -16,9 +17,10 @@ from contracts.models import (
 )
 from contracts.verdict import Verdict
 
-SCHEMA_VERSION = "0.3.0"
+SCHEMA_VERSION = "0.4.0"
 
 __all__ = [
+    "KNOWN_CATEGORIES",
     "SCHEMA_VERSION",
     "BudgetLine",
     "BudgetState",

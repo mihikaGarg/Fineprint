@@ -1,10 +1,35 @@
 from datetime import date
 from enum import StrEnum
-from typing import Any, Self
+from typing import Any, Literal, Self
 
 from pydantic import BaseModel, Field, StrictInt, field_validator, model_validator
 
 from contracts.verdict import Verdict
+
+# Shared cost categories. Rules and expenses must use these values so a rule
+# written for "meals" matches an expense categorised as "meals".
+KNOWN_CATEGORIES: tuple[str, ...] = (
+    "travel_domestic",
+    "travel_foreign",
+    "airfare",
+    "first_class_airfare",
+    "ground_transport",
+    "lodging",
+    "meals",
+    "alcohol",
+    "entertainment",
+    "gifts",
+    "equipment",
+    "supplies",
+    "software",
+    "lobbying",
+    "fundraising",
+    "personnel",
+    "other",
+)
+
+RuleSource = Literal["grant", "policy"]
+RuleStatus = Literal["proposed", "approved"]
 
 
 class RuleOutcome(StrEnum):
@@ -38,6 +63,9 @@ class Expense(BaseModel):
     category: str
     memo: str = ""
     has_prior_approval: bool = False
+    # Roles that have approved this expense, e.g. ["finance_director"].
+    approvals: list[str] = Field(default_factory=list[str])
+    has_receipt: bool = False
 
     @field_validator("amount_cents")
     @classmethod
@@ -70,6 +98,10 @@ class SpendRule(BaseModel):
     rule_type: str
     citation: RuleCitation
     params: dict[str, Any] = Field(default_factory=dict)
+    # Where the rule came from, and whether a person has approved it.
+    # Only approved rules are enforced.
+    source: RuleSource = "grant"
+    status: RuleStatus = "approved"
 
 
 class Ruleset(BaseModel):
@@ -84,6 +116,9 @@ class RuleTrace(BaseModel):
     outcome: RuleOutcome
     reason: str
     citation: RuleCitation
+    source: RuleSource = "grant"
+    # For FAIL/ESCALATE: what would make this rule pass.
+    fix: str | None = None
 
 
 class EnforcementResult(BaseModel):

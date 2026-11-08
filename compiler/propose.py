@@ -36,7 +36,9 @@ DATE_RE = re.compile(
     re.IGNORECASE,
 )
 DOLLAR_RE = re.compile(r"\$\s?(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{2}))?")
-SENTENCE_SPLIT_RE = re.compile(r"(?<=[.;])\s+")
+SENTENCE_SPLIT_RE = re.compile(
+    r"(?<=[.;])\s+|\n(?=[A-Z0-9§])"
+)  # sentence end, or a new line that starts a heading or numbered clause
 
 PROHIBITED_KEYWORDS = {
     "alcohol": "alcohol",
@@ -64,6 +66,8 @@ class Candidate:
 class Proposal:
     candidates: list[Candidate] = field(default_factory=list[Candidate])
     rejected: list[dict[str, Any]] = field(default_factory=list[dict[str, Any]])
+    # Clauses that might be rules but are ambiguous; shown to a person, never enforced.
+    flagged: list[dict[str, Any]] = field(default_factory=list[dict[str, Any]])
 
 
 def parse_dates(text: str) -> list[date]:

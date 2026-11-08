@@ -1,4 +1,4 @@
-.PHONY: install check lint format typecheck test api web report report-dry report-replay
+.PHONY: install check lint format typecheck test api web report report-dry report-replay demo playground
 
 install:
 	uv sync
@@ -33,3 +33,10 @@ report-dry:
 
 report-replay:
 	uv run python -m compiler.report --mode replay --replay fixtures/llm_replays/sample_grant.json
+
+demo:
+	uv run python scripts/demo_walkthrough.py
+
+# Full app at http://localhost:8000/app (also /chat, /playground); never uses an API key.
+playground:
+	env -u ANTHROPIC_API_KEY FINEPRINT_PROPOSER=keyword uv run uvicorn api.main:app --port 8000

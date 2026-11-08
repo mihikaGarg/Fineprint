@@ -52,3 +52,11 @@ def test_api_rejects_float_amounts() -> None:
         "budget_state": SAMPLE_BUDGET.model_dump(mode="json"),
     }
     assert client.post("/api/enforce", json=payload).status_code == 422
+
+
+def test_compile_demo_offline_uses_keyword_proposer() -> None:
+    res = client.post("/api/compile/demo")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["proposer"] == "keyword"
+    assert data["verified_count"] == 4

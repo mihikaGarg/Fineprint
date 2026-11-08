@@ -35,7 +35,7 @@ SAMPLE_PAGES = {
 }
 
 SAMPLE_RULESET, SAMPLE_REJECTED = compile_pages(
-    SAMPLE_PAGES, grant_id=SAMPLE_GRANT_ID, grant_name=SAMPLE_GRANT_NAME
+    SAMPLE_PAGES, grant_id=SAMPLE_GRANT_ID, grant_name=SAMPLE_GRANT_NAME, status="approved"
 )
 
 SAMPLE_BUDGET = BudgetState(

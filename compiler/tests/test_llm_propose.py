@@ -161,9 +161,9 @@ def test_llm_failure_falls_back_to_keyword_proposer(monkeypatch: pytest.MonkeyPa
         ]
 
     monkeypatch.setattr(pipeline, "extract_pdf_pages", fake_extract)
-    ruleset, _, source = pipeline.compile_grant_pdf(b"%PDF-fake", "G")
-    assert source == "keyword (LLM unavailable: Claude API error 529)"
-    assert any(r.rule_type == "category_prohibition" for r in ruleset.rules)
+    result = pipeline.compile_grant_pdf(b"%PDF-fake", "G")
+    assert result.proposer == "keyword (LLM unavailable: Claude API error 529)"
+    assert any(r.rule_type == "category_prohibition" for r in result.ruleset.rules)
 
 
 def test_keyword_proposer_is_used_without_a_key() -> None:

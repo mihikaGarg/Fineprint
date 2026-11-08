@@ -37,6 +37,19 @@ interface RuleTrace {
   citation: Citation;
 }
 
+interface RejectedCandidate {
+  candidate: { page?: number; quote?: string; rule_type?: string };
+  reason: string;
+}
+
+interface CompileResponse {
+  ruleset: Ruleset;
+  rejected: RejectedCandidate[];
+  verified_count: number;
+  rejected_count: number;
+  proposer: string;
+}
+
 interface EnforcementResult {
   verdict: Verdict;
   traces: RuleTrace[];
@@ -63,6 +76,7 @@ export function InteractiveStudio() {
   const [error, setError] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<string>("");
+  const [compileInfo, setCompileInfo] = useState<CompileResponse | null>(null);
 
   // Expense form state
   const [merchant, setMerchant] = useState("Lakeshore Hotel");
@@ -92,37 +106,54 @@ export function InteractiveStudio() {
       .catch(() => setError(API_OFFLINE));
   }, []);
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  const runCompile = async (request: () => Promise<Response>, label: string) => {
     setLoading(true);
-    setUploadStatus("Scanning pages & verifying clause citations...");
-
-    const formData = new FormData();
-    formData.append("file", file);
-
+    setError("");
+    setResult(null);
+    setUploadStatus(`${label}: reading pages, finding rules, verifying every quote against the PDF…`);
     try {
-      const res = await fetch(`${API_BASE}/api/compile`, {
+      const res = await request();
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data: CompileResponse = await res.json();
+      // Compiled rules start as "proposed" and aren't enforced until approved.
+      // Until the review screen exists, approve them all so the demo can enforce.
+      const approved = await fetch(`${API_BASE}/api/rulesets/${data.ruleset.grant_id}/approve`, {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
       });
-
-      if (!res.ok) {
-        throw new Error("Failed to compile PDF");
-      }
-
-      const data = await res.json();
+      if (approved.ok) data.ruleset = await approved.json();
       setRuleset(data.ruleset);
-      setUploadStatus(`Extracted ${data.verified_count} rules (${data.rejected_count} unverifiable rules rejected).`);
-      if (data.ruleset.rules?.[0]?.citation) {
-        setActiveCitation(data.ruleset.rules[0].citation);
-      }
+      setCompileInfo(data);
+      setUploadStatus(
+        `${data.verified_count} rules verified, ${data.rejected_count} suggestions rejected.`,
+      );
+      if (data.ruleset.rules[0]) setActiveCitation(data.ruleset.rules[0].citation);
     } catch {
-      setUploadStatus("API offline or upload error. Make sure 'uvicorn api.main:app' is running.");
+      setUploadStatus("");
+      setError(API_OFFLINE);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    const formData = new FormData();
+    formData.append("file", file);
+    void runCompile(
+      () => fetch(`${API_BASE}/api/compile`, { method: "POST", body: formData }),
+      file.name,
+    );
+  };
+
+  const handleLoadDemo = () => {
+    void runCompile(
+      () => fetch(`${API_BASE}/api/compile/demo`, { method: "POST" }),
+      "Demo grant",
+    );
   };
 
   const handleRunEnforcement = async () => {
@@ -197,10 +228,18 @@ export function InteractiveStudio() {
           </h2>
         </div>
 
-        {/* PDF Upload button */}
-        <div className="flex items-center gap-3">
+        {/* Compile controls */}
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={handleLoadDemo}
+            disabled={loading}
+            className="rounded-full bg-ink px-4 py-2 text-xs font-medium text-paper hover:opacity-90 disabled:opacity-50"
+          >
+            {loading ? "Compiling…" : "Load demo grant"}
+          </button>
           <label className="cursor-pointer rounded-full border border-rule bg-paper px-4 py-2 text-xs font-medium hover:border-ink">
-            <span>{loading ? "Scanning..." : "Upload Grant PDF"}</span>
+            <span>Upload grant PDF</span>
             <input
               type="file"
               accept=".pdf"
@@ -213,8 +252,22 @@ export function InteractiveStudio() {
       </div>
 
       {uploadStatus && (
-        <div className="mb-6 rounded-lg bg-paper px-4 py-2 text-xs text-ink-muted">
-          {uploadStatus}
+        <div className="mb-6 flex flex-wrap items-center gap-3 rounded-lg bg-paper px-4 py-2 text-xs text-ink-muted">
+          {compileInfo && !loading && (
+            <span
+              className={`rounded-full px-2.5 py-0.5 font-mono text-[10px] font-semibold ${
+                compileInfo.proposer === "llm"
+                  ? "bg-allowed-bg text-allowed"
+                  : "bg-review-bg text-review"
+              }`}
+            >
+              {compileInfo.proposer === "llm" ? "RULES FOUND BY CLAUDE" : "KEYWORD FINDER (OFFLINE)"}
+            </span>
+          )}
+          <span>{uploadStatus}</span>
+          {compileInfo && compileInfo.proposer.startsWith("keyword (") && (
+            <span className="text-review">{compileInfo.proposer}</span>
+          )}
         </div>
       )}
 
@@ -347,6 +400,26 @@ export function InteractiveStudio() {
               ))}
             </div>
           </div>
+
+          {compileInfo && compileInfo.rejected.length > 0 && (
+            <details className="rounded-lg border border-rule bg-paper px-3 py-2 text-xs">
+              <summary className="cursor-pointer font-medium uppercase tracking-wider text-ink-muted">
+                Rejected suggestions ({compileInfo.rejected.length}): never became rules
+              </summary>
+              <ul className="mt-2 space-y-2">
+                {compileInfo.rejected.map((r, i) => (
+                  <li key={i} className="border-t border-rule pt-2">
+                    <p className="text-blocked">{r.reason}</p>
+                    {r.candidate.quote && (
+                      <p className="mt-0.5 font-serif text-ink-muted">
+                        “{r.candidate.quote}”{r.candidate.page ? ` (p. ${r.candidate.page})` : ""}
+                      </p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
         </div>
 
         {/* Right: Real-time Trace & Clause Citation */}
