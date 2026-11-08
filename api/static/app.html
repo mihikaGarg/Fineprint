@@ -14,7 +14,6 @@
   html, body { height: 100%; }
   body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, sans-serif; }
   .shell { display: grid; grid-template-columns: 220px minmax(0, 1fr); min-height: 100%; }
-  @media (max-width: 800px) { .shell { grid-template-columns: 1fr; } nav.side { position: static; } }
   nav.side { border-right: 1px solid var(--rule); padding: 18px 12px; position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; gap: 4px; }
   .brand { font: 400 24px Georgia, serif; padding: 0 10px 12px; }
   .brand i { font-style: italic; }
@@ -72,6 +71,15 @@
   form.composer input { border-radius: 999px; }
   details summary { cursor: pointer; }
   .verdict { font: 400 26px Georgia, serif; }
+  /* narrow screens: must come after the base rules */
+  @media (max-width: 800px) {
+    .shell { grid-template-columns: 1fr; }
+    nav.side { position: static; height: auto; flex-direction: row; flex-wrap: wrap; align-items: center;
+      border-right: 0; border-bottom: 1px solid var(--rule); padding: 10px; }
+    nav.side .brand { padding: 0 8px 0 4px; width: 100%; }
+    nav.side .spacer, nav.side #mode { display: none; }
+    main { padding: 16px; }
+  }
 </style>
 </head>
 <body>
