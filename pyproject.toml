@@ -19,6 +19,7 @@ dev = [
     "hypothesis>=6.112",
     "pyright>=1.1.385",
     "pytest>=8.3",
+    "reportlab>=4.0",
     "ruff>=0.7",
 ]
 

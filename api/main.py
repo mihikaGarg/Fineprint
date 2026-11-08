@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -10,6 +11,8 @@ from enforce.engine import evaluate_expense
 from fixtures.sample_data import SAMPLE_BUDGET, SAMPLE_EXPENSES, SAMPLE_PAGES, SAMPLE_RULESET
 
 app = FastAPI(title="Fineprint API", version="0.2.0")
+
+DEMO_PDF = Path(__file__).resolve().parents[1] / "fixtures" / "grants" / "demo_grant.pdf"
 
 app.add_middleware(
     CORSMiddleware,
@@ -58,6 +61,24 @@ def enforce_endpoint(req: EnforceRequest) -> EnforcementResult:
     )
 
 
+def _compile_response(content: bytes, grant_name: str) -> CompileResponse:
+    ruleset, rejected, proposer = compile_grant_pdf(content, grant_name=grant_name)
+    return CompileResponse(
+        ruleset=ruleset,
+        rejected=rejected,
+        total_extracted=len(ruleset.rules) + len(rejected),
+        verified_count=len(ruleset.rules),
+        rejected_count=len(rejected),
+        proposer=proposer,
+    )
+
+
+@app.post("/api/compile/demo", response_model=CompileResponse)
+def compile_demo() -> CompileResponse:
+    """Compile the bundled fictional demo grant (fixtures/grants/demo_grant.pdf)."""
+    return _compile_response(DEMO_PDF.read_bytes(), "Community Climate Research Award (demo)")
+
+
 @app.post("/api/compile", response_model=CompileResponse)
 async def compile_endpoint(file: UploadFile = File(...)) -> CompileResponse:  # noqa: B008
     if not file.filename or not file.filename.lower().endswith(".pdf"):
@@ -67,13 +88,4 @@ async def compile_endpoint(file: UploadFile = File(...)) -> CompileResponse:  # 
     if not content:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
 
-    ruleset, rejected, proposer = compile_grant_pdf(content, grant_name=file.filename)
-
-    return CompileResponse(
-        ruleset=ruleset,
-        rejected=rejected,
-        total_extracted=len(ruleset.rules) + len(rejected),
-        verified_count=len(ruleset.rules),
-        rejected_count=len(rejected),
-        proposer=proposer,
-    )
+    return _compile_response(content, file.filename)
