@@ -222,13 +222,16 @@ def find_gaps(draft: PolicyDraft, grants: list[Ruleset]) -> list[Gap]:
                     kind="exception",
                     prompt=(
                         f'"{r.citation.quote}" (p. {r.citation.page}) has an exception I can\'t '
-                        "verify automatically. How should these expenses be handled?"
+                        "check automatically (I can see the category, not whether the exception "
+                        "applies). What should happen to these expenses?"
                     ),
                     options=[
                         ChatOption(
-                            label="Send for review so someone checks the exception", value="review"
+                            label="Flag each one so a person checks the exception", value="review"
                         ),
-                        ChatOption(label="Block them all", value="block"),
+                        ChatOption(
+                            label="Always block, even when the exception applies", value="block"
+                        ),
                     ],
                     rule_id=r.id,
                     page=r.citation.page,
