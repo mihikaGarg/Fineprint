@@ -145,7 +145,7 @@ def test_offline_reader_handles_common_phrasings() -> None:
         "Don't buy from Amazon or Walmart. Receipts over $25. No first class flights. "
         "Hotels up to $250 per night. Submit within 30 days."
     )
-    d = draft_from_items(text, "P", read_policy(text), "offline")
+    d = draft_from_items({1: text}, "P", read_policy(text), "offline")
     got = {
         (
             r.rule_type,

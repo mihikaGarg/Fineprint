@@ -37,6 +37,6 @@ report-replay:
 demo:
 	uv run python scripts/demo_walkthrough.py
 
-# Test page at http://localhost:8000/playground, never uses an API key.
+# Test pages at http://localhost:8000/chat and /playground; never uses an API key.
 playground:
 	env -u ANTHROPIC_API_KEY FINEPRINT_PROPOSER=keyword uv run uvicorn api.main:app --port 8000

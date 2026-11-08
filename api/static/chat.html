@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fineprint policy assistant</title>
+<style>
+  :root { --bg:#f7f4ec; --card:#fffdf7; --ink:#16181d; --muted:#5b5f68; --rule:#ddd6c6; --me:#16181d; --meink:#f7f4ec;
+    --ok:#1f7a4d; --okbg:#e3f2e8; --bad:#b42318; --badbg:#fbe5e2; --rev:#a15c07; --revbg:#fcefd6; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#121317; --card:#1b1d22; --ink:#ecebe6; --muted:#a2a5ad;
+    --rule:#2e3138; --me:#ecebe6; --meink:#121317; --ok:#5fd39a; --okbg:#16301f; --bad:#ff8a7a; --badbg:#3a1a17;
+    --rev:#f4b860; --revbg:#36270f; } }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, sans-serif; }
+  .app { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 16px; max-width: 1280px;
+    margin: auto; padding: 16px; height: 100%; }
+  @media (max-width: 900px) { .app { grid-template-columns: 1fr; height: auto; } .chat { height: 80vh; } }
+  .panel { background: var(--card); border: 1px solid var(--rule); border-radius: 14px; min-height: 0; }
+  .chat { display: flex; flex-direction: column; }
+  .chat header, .side header { padding: 12px 16px; border-bottom: 1px solid var(--rule); }
+  h1 { font: 400 20px Georgia, serif; margin: 0; }
+  h2 { font: 400 17px Georgia, serif; margin: 0; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .log { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+  .msg { max-width: 85%; padding: 10px 14px; border-radius: 16px; white-space: pre-wrap; }
+  .msg.assistant { background: var(--bg); border: 1px solid var(--rule); border-bottom-left-radius: 4px; align-self: flex-start; }
+  .msg.user { background: var(--me); color: var(--meink); border-bottom-right-radius: 4px; align-self: flex-end; }
+  .opts { display: flex; flex-wrap: wrap; gap: 6px; align-self: flex-start; max-width: 90%; }
+  button { font: inherit; cursor: pointer; border-radius: 999px; padding: 7px 14px; border: 1px solid var(--rule);
+    background: var(--card); color: var(--ink); }
+  button:hover:not(:disabled) { border-color: var(--ink); }
+  button.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  button:disabled { opacity: .45; cursor: default; }
+  .typing { align-self: flex-start; color: var(--muted); font-size: 13px; padding: 0 6px; }
+  form.composer { display: flex; gap: 8px; padding: 12px; border-top: 1px solid var(--rule); }
+  form.composer input { flex: 1; font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--rule);
+    border-radius: 999px; padding: 9px 14px; }
+  .side { display: flex; flex-direction: column; overflow: hidden; }
+  .side .body { overflow-y: auto; padding: 12px 16px; flex: 1; }
+  .rule { border-top: 1px solid var(--rule); padding: 8px 0; font-size: 14px; }
+  .rule:first-child { border-top: 0; }
+  .quote { font-family: Georgia, serif; color: var(--muted); font-size: 13px; }
+  .pill { display: inline-block; font: 600 10px ui-monospace, monospace; padding: 2px 7px; border-radius: 999px; vertical-align: middle; }
+  .approved, .ALLOWED { background: var(--okbg); color: var(--ok); }
+  .proposed, .NEEDS_REVIEW, .ESCALATE { background: var(--revbg); color: var(--rev); }
+  .BLOCKED, .FAIL { background: var(--badbg); color: var(--bad); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  td, th { text-align: left; vertical-align: top; padding: 7px 4px; border-top: 1px solid var(--rule); }
+  .tabs { display: flex; gap: 6px; margin-top: 8px; }
+  .tabs button.on { background: var(--ink); color: var(--bg); }
+  .start { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  label.check { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; color: var(--muted); }
+  .err { color: var(--bad); }
+</style>
+</head>
+<body>
+<div class="app">
+  <section class="panel chat">
+    <header>
+      <h1>Fineprint policy assistant</h1>
+      <div class="muted" id="mode">…</div>
+    </header>
+    <div class="log" id="log"></div>
+    <form class="composer" id="composer">
+      <input id="input" autocomplete="off" placeholder="Type a message…" disabled>
+      <button class="primary" id="send" disabled>Send</button>
+    </form>
+  </section>
+
+  <section class="panel side">
+    <header>
+      <h2>Rulebook</h2>
+      <div class="muted" id="ruleSummary">No rules yet.</div>
+      <div class="tabs">
+        <button class="on" data-tab="rules">Rules</button>
+        <button data-tab="batch">Test expenses</button>
+      </div>
+    </header>
+    <div class="body" id="rulesTab"></div>
+    <div class="body" id="batchTab" hidden>
+      <p class="muted">Run 14 realistic expenses (flights, a $48k service contract, GPU cluster, donor wine, gifts…) against your rulebook<span id="grantNote"></span>.</p>
+      <button class="primary" id="runBatch" disabled>Run expense batch</button>
+      <div id="batchOut"></div>
+    </div>
+  </section>
+</div>
+<input type="file" id="file" accept=".pdf,.txt,.md" hidden>
+
+<script>
+let session = null;
+let busy = false;
+const $ = (id) => document.getElementById(id);
+const log = $("log");
+
+function el(tag, props = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === "class") node.className = v;
+    else if (k.startsWith("on")) node.addEventListener(k.slice(2), v);
+    else node.setAttribute(k, v);
+  }
+  for (const c of children.flat()) {
+    if (c === null || c === undefined || c === false) continue;
+    node.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  }
+  return node;
+}
+
+const money = (c) => { const d = Math.trunc(c / 100).toLocaleString("en-US"); const r = String(c % 100).padStart(2, "0"); return r === "00" ? `$${d}` : `$${d}.${r}`; };
+const label = (c) => ({ travel_domestic: "domestic travel", first_class_airfare: "first-class airfare", ground_transport: "taxi/rideshare" }[c] || c.replace(/_/g, " "));
+const role = (r) => r.length <= 3 ? r.toUpperCase() : r.replace(/_/g, " ");
+
+function describe(rule) {
+  const p = rule.params, cats = (p.categories || []).map(label).join(", ") || "any expense";
+  const act = { block: "blocked", review: "sent for review" }[p.action] || "action not set";
+  switch (rule.rule_type) {
+    case "category_prohibition": return `${(p.prohibited_categories || []).map(label).join(", ")}: ${p.action === "review" ? "sent for review" : "blocked"}`;
+    case "per_item_cap": return `${cats} over ${money(p.cap_cents)} per charge: ${act}`;
+    case "approval_required": return `${cats} ${p.threshold_cents ? "from " + money(p.threshold_cents) : "(any amount)"} needs ${role(p.approver_role || "?")} approval, otherwise ${act}`;
+    case "merchant_restriction": return `purchases from ${p.merchants.join(", ")}: blocked`;
+    case "receipt_required": return `receipt needed from ${money(p.threshold_cents)} on ${cats}`;
+    case "period_of_performance": return `only dates ${p.label}`;
+    case "budget_limit": return `must fit the ${label(p.budget_line)} budget line`;
+    case "threshold_approval": return `${label(p.category)} from ${money(p.threshold_cents)} needs prior written approval`;
+    default: return rule.name;
+  }
+}
+
+async function api(path, options = {}) {
+  const res = await fetch(path, options);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+  return data;
+}
+
+function scroll() { log.scrollTop = log.scrollHeight; }
+
+function bubble(role, text) { log.append(el("div", { class: `msg ${role}` }, text)); scroll(); }
+
+function typing(on) {
+  document.querySelector(".typing")?.remove();
+  if (on) { log.append(el("div", { class: "typing" }, "Fineprint is typing…")); scroll(); }
+}
+
+function setComposer(enabled, hint) {
+  $("input").disabled = !enabled; $("send").disabled = !enabled;
+  $("input").placeholder = hint || "Type a message…";
+}
+
+// --- Rendering a session --------------------------------------------------
+let shown = 0;
+function render(s) {
+  session = s;
+  document.querySelectorAll(".opts").forEach((o) => o.remove());
+  const msgs = s.messages;
+  for (; shown < msgs.length; shown++) bubble(msgs[shown].role, msgs[shown].text);
+  const last = msgs[msgs.length - 1];
+  const open = last && last.role === "assistant" && last.gap_id && !s.gaps.find((g) => g.id === last.gap_id)?.resolved;
+  if (open && last.options.length) {
+    log.append(el("div", { class: "opts" }, ...last.options.map((o) =>
+      el("button", { class: o.value === "approve" ? "primary" : "", onclick: () => send({ gap_id: last.gap_id, value: o.value }, o.label) }, o.label))));
+    scroll();
+  }
+  setComposer(true, open ? (last.free_text_hint || "Type a reply…") : "Type a new rule…");
+  renderRules(s);
+}
+
+function renderRules(s) {
+  const rules = s.ruleset.rules;
+  const approved = rules.filter((r) => r.status === "approved").length;
+  const open = s.gaps.filter((g) => !g.resolved && g.kind !== "final").length;
+  $("ruleSummary").textContent = `${rules.length} rules · ${approved} approved · ${open} open items · read by ${s.drafter}`;
+  $("runBatch").disabled = false;
+  $("grantNote").textContent = s.grant_ids.length ? " and the demo grant" : "";
+  $("rulesTab").replaceChildren(...rules.map((r) => {
+    const src = r.citation.page === s.chat_page ? "from this chat" : `${s.source}, p. ${r.citation.page}`;
+    return el("div", { class: "rule" },
+      el("span", { class: `pill ${r.status}` }, r.status.toUpperCase()), " ", describe(r),
+      el("div", { class: "quote" }, `“${r.citation.quote}” (${src})`),
+      ...(r.params.clarifications || []).map((c) => el("div", { class: "muted" }, `↳ ${c.answer}`)));
+  }));
+}
+
+// --- Sending --------------------------------------------------------------
+async function send(body, shownText) {
+  if (busy || !session) return;
+  busy = true;
+  document.querySelectorAll(".opts button").forEach((b) => (b.disabled = true));
+  setComposer(false);
+  if (shownText) { bubble("user", shownText); shown++; }
+  typing(true);
+  try {
+    await new Promise((r) => setTimeout(r, 350));
+    const s = await api(`/api/chat/${session.session_id}/reply`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+    typing(false);
+    render(s);
+  } catch (e) {
+    typing(false);
+    shown = session.messages.length;  // our optimistic bubble stays; resync on next render
+    bubble("assistant", `Sorry, that didn't work: ${e.message}`);
+    render(session);
+  } finally { busy = false; }
+}
+
+$("composer").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  const text = $("input").value.trim();
+  if (!text || !session) return;
+  $("input").value = "";
+  const last = session.messages[session.messages.length - 1];
+  const gapOpen = last && last.gap_id && !session.gaps.find((g) => g.id === last.gap_id)?.resolved;
+  send({ gap_id: gapOpen ? last.gap_id : null, text }, text);
+});
+
+// --- Starting -------------------------------------------------------------
+async function start(form, shownText) {
+  if (busy) return;
+  busy = true;
+  document.querySelectorAll(".opts button").forEach((b) => (b.disabled = true));
+  bubble("user", shownText);
+  typing(true);
+  form.append("link_demo_grant", $("linkGrant").checked ? "true" : "false");
+  try {
+    const s = await api("/api/chat/start", { method: "POST", body: form });
+    typing(false);
+    document.querySelectorAll(".opts").forEach((o) => o.remove());
+    shown = 0;
+    render(s);
+  } catch (e) {
+    typing(false);
+    bubble("assistant", `Sorry, I couldn't read that: ${e.message}`);
+  } finally { busy = false; document.querySelectorAll(".opts button").forEach((b) => (b.disabled = false)); }
+}
+
+function welcome() {
+  bubble("assistant", "Hi! I'm going to set up your expense rules.\n\nUpload your company's expense policy (PDF or text) and I'll read it into rules, each linked to the page it came from. Then we'll go through anything that's vague, missing or has exceptions, one question at a time.");
+  log.append(el("div", { class: "opts" },
+    el("button", { class: "primary", onclick: () => $("file").click() }, "Upload policy"),
+    el("button", { onclick: () => { const f = new FormData(); f.append("sample", "northwind"); f.append("name", "Northwind University FIN-204"); start(f, "Use the sample: Northwind University travel & expense policy (5 pages)"); } }, "Use a sample policy"),
+    el("button", { onclick: () => { setComposer(true, "Type your rules, e.g. No alcohol. Meals up to $75."); $("input").focus(); typedStart = true; } }, "Type rules instead"),
+    el("label", { class: "check" }, el("input", { type: "checkbox", id: "linkGrant", checked: "" }), "Also check against the demo grant"),
+  ));
+}
+// Before a session exists, Enter/Send start one from typed rules.
+let typedStart = false;
+$("input").addEventListener("keydown", (ev) => {
+  if (ev.key === "Enter" && !session && typedStart) {
+    ev.preventDefault();
+    const text = $("input").value.trim();
+    if (!text) return;
+    $("input").value = "";
+    const f = new FormData(); f.append("text", text);
+    start(f, text);
+  }
+});
+$("send").addEventListener("click", (ev) => {
+  if (!session && typedStart) {
+    ev.preventDefault();
+    const text = $("input").value.trim();
+    if (!text) return;
+    $("input").value = "";
+    const f = new FormData(); f.append("text", text);
+    start(f, text);
+  }
+});
+$("file").addEventListener("change", () => {
+  const file = $("file").files[0];
+  if (!file) return;
+  const f = new FormData(); f.append("file", file); f.append("name", file.name.replace(/\.[^.]+$/, ""));
+  $("file").value = "";
+  start(f, `📎 ${file.name}`);
+});
+
+// --- Tabs and batch -------------------------------------------------------
+document.querySelectorAll("[data-tab]").forEach((b) => b.addEventListener("click", () => {
+  document.querySelectorAll("[data-tab]").forEach((x) => x.classList.toggle("on", x === b));
+  $("rulesTab").hidden = b.dataset.tab !== "rules";
+  $("batchTab").hidden = b.dataset.tab !== "batch";
+}));
+
+$("runBatch").addEventListener("click", async () => {
+  if (!session) return;
+  const out = $("batchOut");
+  const proposed = session.ruleset.rules.some((r) => r.status !== "approved");
+  try {
+    const items = await api("/api/batch", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ruleset_ids: [session.session_id, ...session.grant_ids] }),
+    });
+    const counts = { ALLOWED: 0, NEEDS_REVIEW: 0, BLOCKED: 0 };
+    items.forEach((i) => counts[i.result.verdict]++);
+    out.replaceChildren(
+      proposed ? el("p", { class: "err" }, "Some of your rules aren't approved yet, so they're not being enforced. Finish the chat and approve them.") : "",
+      el("p", {}, `${counts.ALLOWED} allowed · ${counts.NEEDS_REVIEW} need review · ${counts.BLOCKED} blocked`),
+      el("table", {}, el("tr", {}, el("th", {}, "Expense"), el("th", {}, "Verdict"), el("th", {}, "Why / what would fix it")),
+        ...items.map(({ expense: e, result: r }) => {
+          const issues = r.traces.filter((t) => t.outcome !== "PASS");
+          return el("tr", {},
+            el("td", {}, el("b", {}, money(e.amount_cents)), ` ${e.memo || e.merchant}`, el("div", { class: "muted" }, `${e.id} · ${label(e.category)} · ${e.merchant}${e.approvals.length ? " · approved by " + e.approvals.map(role).join(", ") : ""}`)),
+            el("td", {}, el("span", { class: `pill ${r.verdict}` }, r.verdict.replace("_", " "))),
+            el("td", {}, issues.length ? issues.map((t) => el("div", {},
+              el("b", {}, t.source === "grant" ? `Grant p.${t.citation.page}` : "Policy"), `: ${t.reason}`,
+              t.fix ? el("div", { class: "muted" }, `Fix: ${t.fix}`) : "")) : el("span", { class: "muted" }, "All rules passed")));
+        })),
+    );
+  } catch (e) { out.replaceChildren(el("p", { class: "err" }, e.message)); }
+});
+
+api("/api/health").then((h) => {
+  $("mode").textContent = h.llm_enabled ? "Claude is reading your documents." : "Offline mode: no API key in use; reads common phrasings only.";
+}).catch(() => { $("mode").textContent = "API not reachable."; });
+welcome();
+</script>
+</body>
+</html>

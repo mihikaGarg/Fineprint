@@ -71,6 +71,7 @@ class PolicyDraft(BaseModel):
     draft_id: str
     name: str
     text: str
+    pages: dict[int, str] = Field(default_factory=dict[int, str])
     drafter: str = "llm"  # "llm" or "offline ..." (which reader produced the rules)
     ruleset: Ruleset
     questions: list[Question] = Field(default_factory=list[Question])
@@ -79,8 +80,9 @@ class PolicyDraft(BaseModel):
 
 
 SYSTEM_PROMPT = f"""\
-You help a company set up its expense policy. The user writes their rules in \
-plain English. Split the text into individual rules. You do not decide whether \
+You help a company set up its expense policy. The input is the company's \
+policy document (or rules the user typed), split into <page number="n"> tags. \
+Split it into individual rules. You do not decide whether \
 any expense is allowed; code does that.
 
 Rule types:
@@ -94,8 +96,9 @@ day, per trip or per month, still report it and the system will flag it.
 - receipt_required: expenses at or above an amount need a receipt.
 
 For each rule:
-- "quote": copy the user's sentence or clause character for character. Do not \
+- "quote": copy the sentence or clause character for character. Do not \
 paraphrase. Include the amount if there is one.
+- "page": the number of the page the quote is on.
 - "categories": which of these categories it applies to, or [] for all: \
 {", ".join(KNOWN_CATEGORIES)}.
 - "action": "block" or "review" if the user said what should happen when the \
@@ -119,6 +122,7 @@ POLICY_SCHEMA: dict[str, Any] = {
                 "type": "object",
                 "properties": {
                     "rule_type": {"type": "string", "enum": list(POLICY_RULE_TYPES)},
+                    "page": {"type": "integer"},
                     "quote": {"type": "string"},
                     "categories": {
                         "type": "array",
@@ -157,6 +161,7 @@ POLICY_SCHEMA: dict[str, Any] = {
                 },
                 "required": [
                     "rule_type",
+                    "page",
                     "quote",
                     "categories",
                     "action",
@@ -215,14 +220,17 @@ def _clean_questions(raw: list[dict[str, Any]], rule_id: str) -> dict[str, Quest
 
 
 def _build_rule(
-    item: dict[str, Any], rule_id: str, text: str
+    item: dict[str, Any], rule_id: str, pages: dict[int, str]
 ) -> tuple[SpendRule, list[Question]] | str:
     """Validate one model-proposed rule. Returns (rule, open questions) or a rejection reason."""
     rule_type = str(item.get("rule_type", ""))
     quote = str(item.get("quote", "")).strip()
     if rule_type not in POLICY_RULE_TYPES:
         return f"Unsupported rule type '{rule_type}'"
-    citation = verify_citation({1: text}, page_number=1, candidate_quote=quote)
+    page = item.get("page", 1)
+    if not isinstance(page, int):
+        return "Missing page number"
+    citation = verify_citation(pages, page_number=page, candidate_quote=quote)
     if citation is None:
         return "Quote is not in the policy text"
     quote, lower = citation.quote, citation.quote.lower()
@@ -236,7 +244,9 @@ def _build_rule(
         if not categories and "categories" not in questions:
             return "Couldn't match this to a known cost category"
         params["prohibited_categories"] = categories
-        questions.pop("action", None)  # prohibitions always block
+        # Prohibitions block unless set to "review" (e.g. the rule has an exception).
+        params["action"] = action or "block"
+        questions.pop("action", None)
 
     elif rule_type == "per_item_cap":
         cap = parse_dollars_to_cents(quote)
@@ -304,36 +314,55 @@ def _build_rule(
     return rule, list(questions.values())
 
 
+def document_prompt(pages: dict[int, str]) -> str:
+    body = "\n".join(f'<page number="{n}">\n{t}\n</page>' for n, t in sorted(pages.items()))
+    return f"<document>\n{body}\n</document>"
+
+
 def draft_policy(
     text: str,
     name: str = "Company expense policy",
     transport: Transport = anthropic_transport,
     effort: Effort = "medium",
 ) -> PolicyDraft:
-    """Turn plain-English policy text into proposed rules plus open questions, using Claude."""
-    text = text.strip()
-    if not text:
+    """Typed rules: a one-page document."""
+    if not text.strip():
         raise ValueError("Policy text is empty")
-    request = LLMRequest(system=SYSTEM_PROMPT, prompt=text, schema=POLICY_SCHEMA, effort=effort)
+    return draft_policy_pages({1: text.strip()}, name, transport, effort)
+
+
+def draft_policy_pages(
+    pages: dict[int, str],
+    name: str = "Company expense policy",
+    transport: Transport = anthropic_transport,
+    effort: Effort = "medium",
+) -> PolicyDraft:
+    """Turn a policy document into proposed rules plus open questions, using Claude."""
+    request = LLMRequest(
+        system=SYSTEM_PROMPT, prompt=document_prompt(pages), schema=POLICY_SCHEMA, effort=effort
+    )
     data: Any = complete_json(request, transport=transport)
     if not isinstance(data, dict):
         raise LLMError("Model output did not match the policy schema")
     parsed: dict[str, Any] = cast(dict[str, Any], data)
     if not isinstance(parsed.get("rules"), list):
         raise LLMError("Model output did not match the policy schema")
-    return draft_from_items(text, name, parsed, drafter="llm")
+    return draft_from_items(pages, name, parsed, drafter="llm")
 
 
-def draft_from_items(text: str, name: str, data: dict[str, Any], drafter: str) -> PolicyDraft:
+def draft_from_items(
+    pages: dict[int, str], name: str, data: dict[str, Any], drafter: str
+) -> PolicyDraft:
     """Validate proposed rule items (from Claude or the offline reader) into a draft."""
     items: list[dict[str, Any]] = data.get("rules", [])
     not_rules: list[dict[str, Any]] = data.get("not_rules", [])
+    text = "\n\n".join(t for _, t in sorted(pages.items()))
     draft_id = "policy_" + hashlib.sha256(text.encode()).hexdigest()[:12]
     rules: list[SpendRule] = []
     questions: list[Question] = []
     rejected: list[dict[str, Any]] = []
     for item in items:
-        built = _build_rule(item, f"{draft_id}_{len(rules) + 1:02d}", text)
+        built = _build_rule(item, f"{draft_id}_{len(rules) + 1:02d}", pages)
         if isinstance(built, str):
             rejected.append({"candidate": item, "reason": built})
             continue
@@ -345,6 +374,7 @@ def draft_from_items(text: str, name: str, data: dict[str, Any], drafter: str) -
         draft_id=draft_id,
         name=name,
         text=text,
+        pages=pages,
         drafter=drafter,
         ruleset=Ruleset(grant_id=draft_id, grant_name=name, rules=rules),
         questions=questions,

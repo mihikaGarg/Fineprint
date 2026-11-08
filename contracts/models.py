@@ -11,7 +11,9 @@ from contracts.verdict import Verdict
 KNOWN_CATEGORIES: tuple[str, ...] = (
     "travel_domestic",
     "travel_foreign",
+    "airfare",
     "first_class_airfare",
+    "ground_transport",
     "lodging",
     "meals",
     "alcohol",

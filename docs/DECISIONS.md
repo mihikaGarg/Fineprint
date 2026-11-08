@@ -23,3 +23,7 @@ One line each: date, decision, why.
 - 2026-11-07 — Rulebook store is in-memory for now (api/main.py RULESETS/DRAFTS); persistence stays with b/persistence.
 - 2026-11-07 — Offline policy reader (compiler/policy_offline.py) handles common phrasings without an API key; its output goes through the same validation as Claude's. Used when no key is set/enabled or Claude fails, and labelled "offline" in the draft.
 - 2026-11-07 — Bare-bones test page served by the API at /playground (make playground) so the policy -> questions -> approve -> enforce flow can be tried without the web app or a key.
+- 2026-11-07 — Policy setup is a chat: the company uploads its existing policy (PDF/text, multi-page), it's read into rules, and the assistant then resolves gaps one at a time (missing details, exceptions, vague wording, unsupported limits, missing topics, grant conflicts). Answers that create rules are written to a "Setup conversation" page that the rules cite, so every rule stays verifiable.
+- 2026-11-07 — Same-type questions are grouped (e.g. one "block or review?" for all approval tiers) to keep big-company setup short.
+- 2026-11-07 — Prohibitions with "except/unless" can be set to review instead of block; categories are read only from the rule clause, not its exception.
+- 2026-11-07 — Added airfare and ground_transport categories so flight and taxi rules don't collide with general travel budget lines.

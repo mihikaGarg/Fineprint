@@ -1,13 +1,15 @@
+import json
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 from compiler.coverage import Coverage
 from compiler.examples import RuleExample, examples_for
+from compiler.extractor import extract_pdf_pages
 from compiler.pipeline import CompileResult, compile_grant_pdf, use_llm
 from compiler.policy import (
     AnswerError,
@@ -16,8 +18,10 @@ from compiler.policy import (
     apply_answers,
     draft_from_items,
     draft_policy,
+    draft_policy_pages,
     open_question_rule_ids,
 )
+from compiler.policy_chat import PolicySession, ReplyError, reply, start_session
 from compiler.policy_offline import read_policy
 from contracts.models import (
     KNOWN_CATEGORIES,
@@ -35,6 +39,23 @@ app = FastAPI(title="Fineprint API", version="0.3.0")
 
 DEMO_PDF = Path(__file__).resolve().parents[1] / "fixtures" / "grants" / "demo_grant.pdf"
 PLAYGROUND_HTML = Path(__file__).resolve().parent / "static" / "playground.html"
+CHAT_HTML = Path(__file__).resolve().parent / "static" / "chat.html"
+FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
+SAMPLE_POLICIES = {"northwind": FIXTURES / "policies" / "northwind_te_policy.pdf"}
+SAMPLE_BATCH = FIXTURES / "expenses" / "enterprise_batch.json"
+# Budget lines from the demo grant's approved budget.
+DEMO_BUDGET = BudgetState.model_validate(
+    {
+        "lines": {
+            "travel_domestic": {
+                "category": "travel_domestic",
+                "allocated_cents": 800000,
+                "spent_cents": 320000,
+            },
+            "equipment": {"category": "equipment", "allocated_cents": 2000000, "spent_cents": 0},
+        }
+    }
+)
 
 # Swapped for a fake in tests.
 LLM_TRANSPORT: Transport = anthropic_transport
@@ -43,6 +64,7 @@ LLM_TRANSPORT: Transport = anthropic_transport
 # Persistence is a separate task (b/persistence).
 RULESETS: dict[str, Ruleset] = {SAMPLE_RULESET.grant_id: SAMPLE_RULESET}
 DRAFTS: dict[str, PolicyDraft] = {}
+SESSIONS: dict[str, PolicySession] = {}
 
 app.add_middleware(
     CORSMiddleware,
@@ -197,8 +219,10 @@ def policy_draft(req: PolicyDraftRequest) -> PolicyDraft:
             return _store_draft(draft_policy(text, name=req.name, transport=LLM_TRANSPORT))
         except LLMError as e:
             fallback = f"offline (Claude unavailable: {e})"
-            return _store_draft(draft_from_items(text, req.name, read_policy(text), fallback))
-    return _store_draft(draft_from_items(text, req.name, read_policy(text), "offline"))
+            pages = {1: text}
+            return _store_draft(draft_from_items(pages, req.name, read_policy(pages), fallback))
+    pages = {1: text}
+    return _store_draft(draft_from_items(pages, req.name, read_policy(pages), "offline"))
 
 
 @app.get("/api/policy/{draft_id}", response_model=PolicyDraft)
@@ -270,3 +294,127 @@ def ruleset_approve(ruleset_id: str, req: ApproveRequest) -> Ruleset:
     if draft:
         DRAFTS[ruleset_id] = draft.model_copy(update={"ruleset": updated})
     return updated
+
+
+# --- Policy setup chat ----------------------------------------------------------
+
+
+@app.get("/chat", response_class=HTMLResponse)
+def chat_page() -> str:
+    """Chat-style test page: upload a policy, close the gaps, test expenses."""
+    return CHAT_HTML.read_text(encoding="utf-8")
+
+
+class ReplyRequest(BaseModel):
+    gap_id: str | None = None
+    value: str | None = None
+    text: str | None = None
+
+
+def _pages_from_upload(filename: str, content: bytes) -> dict[int, str]:
+    if filename.lower().endswith(".pdf"):
+        pages = {p.page_number: p.raw_text for p in extract_pdf_pages(content)}
+    elif filename.lower().endswith((".txt", ".md")):
+        pages = {1: content.decode("utf-8", errors="replace")}
+    else:
+        raise HTTPException(status_code=400, detail="Upload a PDF, .txt or .md file")
+    pages = {n: t for n, t in pages.items() if t.strip()}
+    if not pages:
+        raise HTTPException(status_code=400, detail="No readable text in that file")
+    return pages
+
+
+def _draft(pages: dict[int, str], name: str) -> PolicyDraft:
+    if LLM_TRANSPORT is not anthropic_transport or use_llm():
+        try:
+            return draft_policy_pages(pages, name, transport=LLM_TRANSPORT)
+        except LLMError as e:
+            return draft_from_items(
+                pages, name, read_policy(pages), f"offline (Claude unavailable: {e})"
+            )
+    return draft_from_items(pages, name, read_policy(pages), "offline")
+
+
+@app.post("/api/chat/start", response_model=PolicySession)
+async def chat_start(
+    file: UploadFile | None = File(None),  # noqa: B008
+    sample: str | None = Form(None),
+    text: str | None = Form(None),
+    name: str = Form("Company expense policy"),
+    link_demo_grant: bool = Form(False),
+) -> PolicySession:
+    """Start a setup chat from an uploaded policy, a bundled sample, or typed rules."""
+    if file is not None and file.filename:
+        pages = _pages_from_upload(file.filename, await file.read())
+        source = file.filename
+    elif sample in SAMPLE_POLICIES:
+        path = SAMPLE_POLICIES[sample]
+        pages = _pages_from_upload(path.name, path.read_bytes())
+        source = path.name
+    elif text and text.strip():
+        pages, source = {1: text.strip()}, "your rules"
+    else:
+        raise HTTPException(status_code=400, detail="Upload a policy, pick a sample, or type rules")
+
+    grants: list[Ruleset] = []
+    if link_demo_grant:
+        compiled = _compile_response(
+            compile_grant_pdf(DEMO_PDF.read_bytes(), "Community Climate Research Award (demo)")
+        )
+        grants.append(ruleset_approve(compiled.ruleset.grant_id, ApproveRequest()))
+
+    session = start_session(_draft(pages, name), source, grants)
+    SESSIONS[session.session_id] = session
+    RULESETS[session.session_id] = session.ruleset
+    return session
+
+
+def _get_session(session_id: str) -> PolicySession:
+    session = SESSIONS.get(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail=f"No chat session '{session_id}'")
+    return session
+
+
+@app.get("/api/chat/{session_id}", response_model=PolicySession)
+def chat_get(session_id: str) -> PolicySession:
+    return _get_session(session_id)
+
+
+@app.post("/api/chat/{session_id}/reply", response_model=PolicySession)
+def chat_reply(session_id: str, req: ReplyRequest) -> PolicySession:
+    try:
+        session = reply(_get_session(session_id), req.gap_id, req.value, req.text)
+    except ReplyError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    SESSIONS[session_id] = session
+    RULESETS[session_id] = session.ruleset
+    return session
+
+
+class BatchRequest(BaseModel):
+    ruleset_ids: list[str]
+    expenses: list[Expense] | None = None  # None = bundled enterprise sample batch
+    budget_state: BudgetState | None = None
+
+
+class BatchItem(BaseModel):
+    expense: Expense
+    result: EnforcementResult
+
+
+@app.get("/api/samples/expenses", response_model=list[Expense])
+def sample_expenses() -> list[Expense]:
+    data = json.loads(SAMPLE_BATCH.read_text(encoding="utf-8"))
+    return [Expense.model_validate(e) for e in data["expenses"]]
+
+
+@app.post("/api/batch", response_model=list[BatchItem])
+def batch(req: BatchRequest) -> list[BatchItem]:
+    """Check many expenses at once, each against all the given rulebooks."""
+    rulesets = [_get_ruleset(i) for i in req.ruleset_ids]
+    if not rulesets:
+        raise HTTPException(status_code=400, detail="Send at least one ruleset id")
+    expenses = req.expenses if req.expenses is not None else sample_expenses()
+    budget = req.budget_state or DEMO_BUDGET
+    return [BatchItem(expense=e, result=evaluate_expense(e, rulesets, budget)) for e in expenses]

@@ -35,7 +35,12 @@ format_cents = _format_cents
 
 
 def _role_label(role: str) -> str:
-    return role.replace("_", " ")
+    """finance_director -> finance director; cfo -> CFO."""
+    return role.upper() if len(role) <= 3 else role.replace("_", " ")
+
+
+def _category_label(category: str) -> str:
+    return category.replace("_", " ")
 
 
 def _parse_date(val: Any) -> date:
@@ -111,11 +116,18 @@ def evaluate_rule(
 
     if rule_type == "category_prohibition":
         prohibited = params.get("prohibited_categories", [])
+        if expense.category in prohibited and params.get("action") == "review":
+            return _trace(
+                rule,
+                RuleOutcome.ESCALATE,
+                f"Category is {_category_label(expense.category)}; only allowed as an exception",
+                "A reviewer must confirm this qualifies for the exception",
+            )
         if expense.category in prohibited:
             return _trace(
                 rule,
                 RuleOutcome.FAIL,
-                f"Category is {expense.category}",
+                f"Category is {_category_label(expense.category)}",
                 "Not allowed in any amount under this rule; use a different funding source",
             )
         return _trace(rule, RuleOutcome.PASS, f"Category '{expense.category}' is not prohibited")

@@ -25,7 +25,9 @@ CATEGORY_WORDS: dict[str, tuple[str, ...]] = {
     "software": ("software", "subscription", "saas"),
     "equipment": ("equipment", "laptop", "computer", "hardware", "monitor"),
     "supplies": ("supplies", "stationery"),
-    "travel_domestic": ("travel", "flight", "taxi", "uber", "lyft", "rideshare", "train"),
+    "airfare": ("airfare", "flight", "airline"),
+    "ground_transport": ("taxi", "uber", "lyft", "rideshare", "car service"),
+    "travel_domestic": ("travel", "train", "conference registration"),
     "lobbying": ("lobbying",),
     "fundraising": ("fundraising",),
 }
@@ -33,6 +35,9 @@ NEGATIONS = (
     "no ",
     "never",
     "not allowed",
+    "not permitted",
+    "not reimbursable",
+    "not eligible",
     "prohibited",
     "unallowable",
     "cannot",
@@ -41,11 +46,13 @@ NEGATIONS = (
     "do not",
     "banned",
 )
+NEGATION_RE = re.compile(r"\b(?:" + "|".join(re.escape(n.strip()) for n in NEGATIONS) + r")\b")
+EXCEPT_SPLIT_RE = re.compile(r"\b(?:except|unless|other than)\b")
 CAP_RE = re.compile(
     r"\b(up to|max(?:imum)?(?: of)?|no more than|at most|capped at|limit(?:ed)? to|under)\s+\$"
 )
 MERCHANT_RE = re.compile(
-    r"\b(?:never|don't|do not|no)\s+(?:buy|purchase|shop|order)(?:ing)?\s+"
+    r"\b(?:never|don't|do not|no)\s+(?:buy|purchase|shop|order)(?:ing|s)?\s+"
     r"(?:anything\s+)?(?:from|at)\s+(.+?)[.;!]?$",
     re.IGNORECASE,
 )
@@ -59,14 +66,15 @@ NON_ROLES = {"receipt", "receipts", "approval", "a receipt"}
 
 def _categories(lower: str) -> list[str]:
     cats = [cat for cat, words in CATEGORY_WORDS.items() if any(w in lower for w in words)]
-    if "first_class_airfare" in cats:  # "first class flights" is not all travel
-        cats = [c for c in cats if c != "travel_domestic"]
+    if "first_class_airfare" in cats:  # "first class flights" is not all airfare
+        cats = [c for c in cats if c not in ("airfare", "travel_domestic")]
     return cats
 
 
 def _item(rule_type: str, quote: str, **kw: Any) -> dict[str, Any]:
     return {
         "rule_type": rule_type,
+        "page": kw.get("page", 1),
         "quote": quote,
         "categories": kw.get("categories", []),
         "action": kw.get("action", "unspecified"),
@@ -76,21 +84,36 @@ def _item(rule_type: str, quote: str, **kw: Any) -> dict[str, Any]:
     }
 
 
-def read_policy(text: str) -> dict[str, Any]:
+def read_policy(pages: dict[int, str] | str) -> dict[str, Any]:
+    if isinstance(pages, str):
+        pages = {1: pages}
     rules: list[dict[str, Any]] = []
     not_rules: list[dict[str, str]] = []
+    for page, text in sorted(pages.items()):
+        _read_page(page, text, rules, not_rules)
+    return {"rules": rules, "not_rules": not_rules}
+
+
+def _read_page(
+    page: int, text: str, rules: list[dict[str, Any]], not_rules: list[dict[str, str]]
+) -> None:
     for raw in SENTENCE_SPLIT_RE.split(text):
         sentence = raw.strip()
         if not sentence:
             continue
         lower = sentence.lower()
+        # Categories come from the rule itself, not its exception
+        # ("No alcohol except at client entertainment events" bans alcohol only).
+        main = EXCEPT_SPLIT_RE.split(lower, maxsplit=1)[0]
         has_amount = "$" in sentence
 
         if m := MERCHANT_RE.search(sentence):
             merchants = [x.strip() for x in re.split(r",|\bor\b|\band\b", m.group(1)) if x.strip()]
-            rules.append(_item("merchant_restriction", sentence, merchants=merchants))
+            rules.append(_item("merchant_restriction", sentence, page=page, merchants=merchants))
         elif "receipt" in lower:
-            rules.append(_item("receipt_required", sentence, categories=_categories(lower)))
+            rules.append(
+                _item("receipt_required", sentence, page=page, categories=_categories(lower))
+            )
         elif (
             (role := ROLE_RE.search(lower))
             and role.group(1).strip() not in NON_ROLES
@@ -104,15 +127,20 @@ def read_policy(text: str) -> dict[str, Any]:
             slug = re.sub(r"\s+", "_", role_text)
             rules.append(
                 _item(
-                    "approval_required", sentence, approver_role=slug, categories=_categories(lower)
+                    "approval_required",
+                    sentence,
+                    page=page,
+                    approver_role=slug,
+                    categories=_categories(main),
                 )
             )
         elif has_amount and CAP_RE.search(lower):
-            rules.append(_item("per_item_cap", sentence, categories=_categories(lower)))
-        elif any(n in lower for n in NEGATIONS) and _categories(lower):
-            rules.append(_item("category_prohibition", sentence, categories=_categories(lower)))
+            rules.append(_item("per_item_cap", sentence, page=page, categories=_categories(main)))
+        elif NEGATION_RE.search(main) and _categories(main):
+            rules.append(
+                _item("category_prohibition", sentence, page=page, categories=_categories(main))
+            )
         else:
             not_rules.append(
                 {"quote": sentence, "why": "Not recognised as a spending rule (offline reader)"}
             )
-    return {"rules": rules, "not_rules": not_rules}
