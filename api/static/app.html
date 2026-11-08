@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fineprint</title>
+<style>
+  :root { --bg:#f7f4ec; --card:#fffdf7; --ink:#16181d; --muted:#5b5f68; --rule:#ddd6c6; --me:#16181d; --meink:#f7f4ec;
+    --ok:#1f7a4d; --okbg:#e3f2e8; --bad:#b42318; --badbg:#fbe5e2; --rev:#a15c07; --revbg:#fcefd6; --bar:#e9e3d4; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#121317; --card:#1b1d22; --ink:#ecebe6; --muted:#a2a5ad;
+    --rule:#2e3138; --me:#ecebe6; --meink:#121317; --ok:#5fd39a; --okbg:#16301f; --bad:#ff8a7a; --badbg:#3a1a17;
+    --rev:#f4b860; --revbg:#36270f; --bar:#2a2d33; } }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, sans-serif; }
+  .shell { display: grid; grid-template-columns: 220px minmax(0, 1fr); min-height: 100%; }
+  @media (max-width: 800px) { .shell { grid-template-columns: 1fr; } nav.side { position: static; } }
+  nav.side { border-right: 1px solid var(--rule); padding: 18px 12px; position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; gap: 4px; }
+  .brand { font: 400 24px Georgia, serif; padding: 0 10px 12px; }
+  .brand i { font-style: italic; }
+  nav.side a { color: var(--ink); text-decoration: none; padding: 8px 10px; border-radius: 8px; display: flex; justify-content: space-between; }
+  nav.side a.on { background: var(--card); border: 1px solid var(--rule); }
+  nav.side .spacer { flex: 1; }
+  main { padding: 24px; max-width: 1150px; width: 100%; }
+  h1 { font: 400 30px Georgia, serif; margin: 0 0 4px; }
+  h2 { font: 400 20px Georgia, serif; margin: 0 0 8px; }
+  h3 { font-size: 15px; margin: 14px 0 6px; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .card { background: var(--card); border: 1px solid var(--rule); border-radius: 14px; padding: 16px; margin: 14px 0; }
+  .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+  .stat b { display: block; font: 400 30px Georgia, serif; }
+  button { font: inherit; cursor: pointer; border-radius: 999px; padding: 7px 14px; border: 1px solid var(--rule); background: var(--card); color: var(--ink); }
+  button:hover:not(:disabled) { border-color: var(--ink); }
+  button.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  button.small { padding: 3px 10px; font-size: 13px; }
+  button:disabled { opacity: .45; cursor: default; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .pill { display: inline-block; font: 600 10px ui-monospace, monospace; padding: 2px 7px; border-radius: 999px; vertical-align: middle; white-space: nowrap; }
+  .approved, .ALLOWED, .PASS, .rule-st { background: var(--okbg); color: var(--ok); }
+  .proposed, .NEEDS_REVIEW, .ESCALATE, .flagged { background: var(--revbg); color: var(--rev); }
+  .BLOCKED, .FAIL, .rejected { background: var(--badbg); color: var(--bad); }
+  .no_rule { background: var(--bar); color: var(--muted); }
+  .quote { font-family: Georgia, serif; color: var(--muted); font-size: 13px; }
+  .item { border-top: 1px solid var(--rule); padding: 10px 0; }
+  .item:first-child { border-top: 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  td, th { text-align: left; vertical-align: top; padding: 8px 6px; border-top: 1px solid var(--rule); }
+  .bar { height: 8px; background: var(--bar); border-radius: 99px; overflow: hidden; display: flex; }
+  .bar span { display: block; height: 100%; }
+  .steps { counter-reset: s; list-style: none; padding: 0; margin: 0; }
+  .steps li { padding: 8px 0; display: flex; gap: 10px; align-items: center; border-top: 1px solid var(--rule); }
+  .steps li:first-child { border-top: 0; }
+  .check { width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--rule); display: grid; place-items: center; font-size: 12px; flex: none; }
+  .check.done { background: var(--okbg); color: var(--ok); border-color: transparent; }
+  label.f { display: block; font-size: 12px; color: var(--muted); margin-bottom: 2px; }
+  input, select { width: 100%; font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--rule); border-radius: 8px; padding: 7px 9px; }
+  input[type=checkbox] { width: auto; }
+  .form { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+  .cb { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; margin-right: 12px; }
+  .err { color: var(--bad); }
+  .split { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 14px; }
+  @media (max-width: 1000px) { .split { grid-template-columns: 1fr; } }
+  /* chat */
+  .chat { display: flex; flex-direction: column; height: 70vh; padding: 0; }
+  .log { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+  .msg { max-width: 85%; padding: 10px 14px; border-radius: 16px; white-space: pre-wrap; }
+  .msg.assistant { background: var(--bg); border: 1px solid var(--rule); border-bottom-left-radius: 4px; align-self: flex-start; }
+  .msg.user { background: var(--me); color: var(--meink); border-bottom-right-radius: 4px; align-self: flex-end; }
+  .opts { display: flex; flex-wrap: wrap; gap: 6px; align-self: flex-start; max-width: 92%; }
+  .typing { align-self: flex-start; color: var(--muted); font-size: 13px; }
+  form.composer { display: flex; gap: 8px; padding: 12px; border-top: 1px solid var(--rule); }
+  form.composer input { border-radius: 999px; }
+  details summary { cursor: pointer; }
+  .verdict { font: 400 26px Georgia, serif; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <nav class="side">
+    <div class="brand">Fine<i>print</i></div>
+    <a href="#overview" data-view="overview">Overview</a>
+    <a href="#grants" data-view="grants">Grants <span id="navGrants" class="muted"></span></a>
+    <a href="#policy" data-view="policy">Company policy <span id="navPolicy" class="muted"></span></a>
+    <a href="#rulebook" data-view="rulebook">Rulebook <span id="navRules" class="muted"></span></a>
+    <a href="#expenses" data-view="expenses">Expenses <span id="navExp" class="muted"></span></a>
+    <div class="spacer"></div>
+    <div class="muted" id="mode" style="padding:0 10px 8px"></div>
+    <button class="small" id="resetBtn">Reset demo</button>
+  </nav>
+  <main id="view"></main>
+</div>
+<input type="file" id="grantFile" accept=".pdf" hidden>
+<input type="file" id="policyFile" accept=".pdf,.txt,.md" hidden>
+
+<script>
+// ---------- helpers ----------
+const $ = (id) => document.getElementById(id);
+function el(tag, props = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(props || {})) {
+    if (v === false || v === null || v === undefined) continue;
+    if (k === "class") node.className = v;
+    else if (k.startsWith("on")) node.addEventListener(k.slice(2), v);
+    else node.setAttribute(k, v === true ? "" : v);
+  }
+  for (const c of children.flat(Infinity)) {
+    if (c === null || c === undefined || c === false || c === "") continue;
+    node.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  }
+  return node;
+}
+async function api(path, options = {}) {
+  const res = await fetch(path, options);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+  return data;
+}
+const post = (path, body) => api(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body ?? {}) });
+const money = (c) => { const d = Math.trunc(c / 100).toLocaleString("en-US"); const r = String(c % 100).padStart(2, "0"); return r === "00" ? `$${d}` : `$${d}.${r}`; };
+const toCents = (v) => { const m = /^\s*\$?(\d{1,9})(?:\.(\d{1,2}))?\s*$/.exec(String(v).replace(/,/g, "")); return m ? Number(m[1]) * 100 + Number((m[2] || "").padEnd(2, "0")) : null; };
+const LABELS = { travel_domestic: "domestic travel", first_class_airfare: "first-class airfare", ground_transport: "taxi/rideshare" };
+const label = (c) => LABELS[c] || String(c).replace(/_/g, " ");
+const role = (r) => r.length <= 3 ? r.toUpperCase() : r.replace(/_/g, " ");
+const pill = (cls, text) => el("span", { class: `pill ${cls}` }, text);
+const verdictText = (v) => ({ ALLOWED: "Allowed", NEEDS_REVIEW: "Needs review", BLOCKED: "Blocked" }[v] || v);
+function describe(rule) {
+  const p = rule.params, cats = (p.categories || []).map(label).join(", ") || "any expense";
+  const act = { block: "blocked", review: "sent for review" }[p.action] || "action not chosen yet";
+  switch (rule.rule_type) {
+    case "category_prohibition": return `${(p.prohibited_categories || []).map(label).join(", ")}: ${p.action === "review" ? "sent for review" : "blocked"}`;
+    case "per_item_cap": return `${cats} over ${money(p.cap_cents)} per charge: ${act}`;
+    case "approval_required": return `${cats} ${p.threshold_cents ? "from " + money(p.threshold_cents) : "(any amount)"} needs ${role(p.approver_role || "?")} approval, otherwise ${act}`;
+    case "merchant_restriction": return `purchases from ${p.merchants.join(", ")}: blocked`;
+    case "receipt_required": return `receipt needed from ${money(p.threshold_cents)} on ${cats}`;
+    case "period_of_performance": return `only expenses dated ${p.label}`;
+    case "budget_limit": return `must fit the ${label(p.budget_line)} budget line`;
+    case "threshold_approval": return `${label(p.category)} from ${money(p.threshold_cents)} needs prior written approval`;
+    default: return rule.name;
+  }
+}
+
+// ---------- app state ----------
+let state = null;
+let categories = [];
+async function refresh() {
+  state = await api("/api/state");
+  const grants = state.rulesets.filter((r) => r.kind === "grant");
+  const policies = state.rulesets.filter((r) => r.kind === "policy");
+  const total = state.rulesets.reduce((a, r) => a + r.rules, 0);
+  const approved = state.rulesets.reduce((a, r) => a + r.approved, 0);
+  $("navGrants").textContent = grants.length || "";
+  $("navPolicy").textContent = policies.length ? (policies.some((p) => p.open_items) ? "•" : "✓") : "";
+  $("navRules").textContent = total ? `${approved}/${total}` : "";
+  $("navExp").textContent = state.expenses_checked || "";
+  $("mode").textContent = state.llm_enabled ? "Claude: on" : "Offline mode (no API key)";
+  return state;
+}
+const approvedIds = () => state.rulesets.filter((r) => r.approved).map((r) => r.id);
+const rulesetName = (id) => state.rulesets.find((r) => r.id === id)?.name || id;
+
+// ---------- router ----------
+const VIEWS = { overview: viewOverview, grants: viewGrants, policy: viewPolicy, rulebook: viewRulebook, expenses: viewExpenses };
+async function route() {
+  const name = (location.hash || "#overview").slice(1);
+  document.querySelectorAll("nav.side a").forEach((a) => a.classList.toggle("on", a.dataset.view === name));
+  await refresh();
+  const view = $("view");
+  view.replaceChildren();
+  await (VIEWS[name] || viewOverview)(view);
+}
+window.addEventListener("hashchange", route);
+const go = (name) => { if (location.hash === `#${name}`) route(); else location.hash = name; };
+
+// ---------- overview ----------
+async function viewOverview(v) {
+  const grants = state.rulesets.filter((r) => r.kind === "grant");
+  const policies = state.rulesets.filter((r) => r.kind === "policy");
+  const total = state.rulesets.reduce((a, r) => a + r.rules, 0);
+  const approved = state.rulesets.reduce((a, r) => a + r.approved, 0);
+  const steps = [
+    ["Add a grant agreement", grants.length > 0, "grants", "Fineprint reads it into rules, each tied to its clause and page."],
+    ["Set up your company policy", policies.length > 0 && !policies.some((p) => p.open_items), "policy", "Upload your expense policy; the assistant fills the gaps with you."],
+    ["Approve the rules", total > 0 && approved === total, "rulebook", "Nothing is enforced until a person approves it."],
+    ["Check expenses", state.expenses_checked > 0, "expenses", "Every expense is checked against the grant and your policy at once."],
+  ];
+  const log = await api("/api/expenses");
+  v.append(
+    el("h1", {}, "Overview"),
+    el("p", { class: "muted" }, "Every dollar, cleared by the clause."),
+    el("div", { class: "card" }, el("h2", {}, "Get set up"),
+      el("ol", { class: "steps" }, steps.map(([t, done, view, sub], i) => el("li", {},
+        el("span", { class: `check ${done ? "done" : ""}` }, done ? "✓" : i + 1),
+        el("div", { style: "flex:1" }, el("b", {}, t), el("div", { class: "muted" }, sub)),
+        el("button", { class: done ? "small" : "small primary", onclick: () => go(view) }, done ? "Open" : "Start"))))),
+    el("div", { class: "grid" },
+      el("div", { class: "card stat" }, el("span", { class: "muted" }, "Rulebooks"), el("b", {}, state.rulesets.length), el("span", { class: "muted" }, `${grants.length} grant · ${policies.length} policy`)),
+      el("div", { class: "card stat" }, el("span", { class: "muted" }, "Rules approved"), el("b", {}, `${approved}/${total}`), el("span", { class: "muted" }, "only approved rules are enforced")),
+      el("div", { class: "card stat" }, el("span", { class: "muted" }, "Expenses checked"), el("b", {}, state.expenses_checked),
+        el("span", { class: "muted" }, `${state.verdicts.ALLOWED} allowed · ${state.verdicts.NEEDS_REVIEW} review · ${state.verdicts.BLOCKED} blocked`))),
+    budgetCard(),
+    el("div", { class: "card" }, el("h2", {}, "Recent decisions"),
+      log.length ? expenseTable(log.slice(0, 6)) : el("p", { class: "muted" }, "No expenses checked yet.")),
+  );
+}
+function budgetCard() {
+  const lines = Object.entries(state.budget.lines);
+  return el("div", { class: "card" }, el("h2", {}, "Grant budget"),
+    el("p", { class: "muted" }, "Spend is recorded when an expense is allowed."),
+    lines.map(([k, l]) => {
+      const pct = Math.min(100, Math.round((l.spent_cents / l.allocated_cents) * 100));
+      return el("div", { class: "item" }, el("div", { class: "row", style: "justify-content:space-between" },
+        el("b", {}, label(k)), el("span", { class: "muted" }, `${money(l.spent_cents)} of ${money(l.allocated_cents)} (${pct}%)`)),
+        el("div", { class: "bar" }, el("span", { style: `width:${pct}%;background:${pct > 90 ? "var(--bad)" : "var(--ok)"}` })));
+    }));
+}
+
+// ---------- grants ----------
+async function viewGrants(v) {
+  const grants = state.rulesets.filter((r) => r.kind === "grant");
+  const status = el("p", { class: "muted" });
+  v.append(el("h1", {}, "Grants"),
+    el("p", { class: "muted" }, "Upload a grant agreement. Fineprint reads every clause, proposes rules tied to the exact sentence and page, and rejects anything it can't verify against the PDF."),
+    el("div", { class: "row" },
+      el("button", { class: "primary", onclick: () => compileGrant(() => post("/api/compile/demo"), status) }, "Load demo grant (4 pages)"),
+      el("button", { onclick: () => $("grantFile").click() }, "Upload grant PDF")),
+    status);
+  $("grantFile").onchange = () => {
+    const f = $("grantFile").files[0]; if (!f) return;
+    const fd = new FormData(); fd.append("file", f); $("grantFile").value = "";
+    compileGrant(() => api("/api/compile", { method: "POST", body: fd }), status);
+  };
+  if (!grants.length) { v.append(el("div", { class: "card muted" }, "No grants yet.")); return; }
+  for (const g of grants) v.append(await grantCard(g.id));
+}
+async function compileGrant(request, status) {
+  status.textContent = "Reading pages, finding rules, verifying every quote against the PDF…";
+  try { await request(); route(); } catch (e) { status.textContent = ""; status.append(el("span", { class: "err" }, e.message)); }
+}
+async function grantCard(id) {
+  const g = await api(`/api/grants/${id}`);
+  const cards = await api(`/api/rulesets/${id}/cards`);
+  const c = g.coverage;
+  const seg = (n, color) => el("span", { style: `width:${(n / Math.max(1, c.total)) * 100}%;background:${color}` });
+  const proposed = g.ruleset.rules.filter((r) => r.status !== "approved").length;
+  return el("div", { class: "card" },
+    el("div", { class: "row", style: "justify-content:space-between" },
+      el("div", {}, el("h2", {}, g.ruleset.grant_name), el("div", { class: "muted" }, `Read by ${g.proposer} · ${g.ruleset.rules.length} rules · ${proposed} awaiting approval`)),
+      proposed ? el("button", { class: "primary", onclick: async () => { await post(`/api/rulesets/${id}/approve`, {}); route(); } }, `Approve all ${proposed}`) : pill("approved", "ALL APPROVED")),
+    el("h3", {}, `Coverage: read all ${c.total} clauses`),
+    el("div", { class: "bar" }, seg(c.rules, "var(--ok)"), seg(c.flagged, "var(--rev)"), seg(c.rejected, "var(--bad)")),
+    el("p", { class: "muted" }, `${c.rules} became rules · ${c.flagged} flagged as ambiguous · ${c.rejected} rejected · ${c.no_rule} with no spending rule`),
+    el("h3", {}, "Rules"),
+    cards.map((card) => ruleCard(card, id)),
+    g.rejected.length ? el("details", {}, el("summary", { class: "muted" }, `Rejected suggestions (${g.rejected.length}): never became rules`),
+      g.rejected.map((x) => el("div", { class: "item" }, el("span", { class: "err" }, x.reason), el("div", { class: "quote" }, `“${x.candidate.quote}” (p. ${x.candidate.page})`)))) : "",
+    el("details", {}, el("summary", { class: "muted" }, `Every clause (${c.total})`),
+      c.clauses.map((cl) => el("div", { class: "item" }, pill(cl.status === "rule" ? "rule-st" : cl.status, cl.status.replace("_", " ").toUpperCase()), ` p. ${cl.page} `,
+        el("span", { class: "quote" }, cl.text), cl.detail ? el("div", { class: "muted" }, cl.detail) : ""))),
+  );
+}
+function ruleCard(card, rulesetId) {
+  const r = card.rule;
+  const src = `${r.source === "grant" ? "grant" : "policy"} p. ${r.citation.page}`;
+  return el("div", { class: "item" },
+    el("div", { class: "row", style: "justify-content:space-between" },
+      el("div", {}, pill(r.status, r.status.toUpperCase()), " ", el("b", {}, r.name), " · ", describe(r)),
+      r.status !== "approved" && card.can_approve ? el("button", { class: "small", onclick: async () => { await post(`/api/rulesets/${rulesetId}/approve`, { rule_ids: [r.id] }); route(); } }, "Approve") : ""),
+    el("div", { class: "quote" }, `“${r.citation.quote}” (${src})`),
+    card.open_questions.length ? el("div", { class: "muted" }, "Has open questions: answer them in Company policy.") : "",
+    card.examples.length ? el("div", { class: "row", style: "margin-top:4px" }, card.examples.map((e) => el("span", { class: "muted" }, pill(e.verdict, verdictText(e.verdict).toUpperCase()), ` ${e.description}`))) : "");
+}
+
+// ---------- company policy (chat) ----------
+let chat = null, shownMsgs = 0, busy = false;
+async function viewPolicy(v) {
+  const policy = state.rulesets.find((r) => r.kind === "policy");
+  const log = el("div", { class: "log" });
+  const input = el("input", { autocomplete: "off", placeholder: "Type a message…", disabled: true });
+  const send = el("button", { class: "primary", disabled: true }, "Send");
+  const composer = el("form", { class: "composer" }, input, send);
+  const rulesBox = el("div");
+  v.append(el("h1", {}, "Company policy"),
+    el("p", { class: "muted" }, "Upload your existing expense policy. The assistant reads it into rules, then walks you through anything vague, missing or with exceptions."),
+    el("div", { class: "split" }, el("div", { class: "card chat" }, log, composer), el("div", { class: "card" }, el("h2", {}, "Policy rules"), rulesBox)));
+
+  const bubble = (role, text) => { log.append(el("div", { class: `msg ${role}` }, text)); log.scrollTop = log.scrollHeight; };
+  const typing = (on) => { log.querySelector(".typing")?.remove(); if (on) { log.append(el("div", { class: "typing" }, "Fineprint is typing…")); log.scrollTop = log.scrollHeight; } };
+  const setComposer = (on, hint) => { input.disabled = !on; send.disabled = !on; input.placeholder = hint || "Type a message…"; };
+
+  function render(s) {
+    chat = s;
+    log.querySelectorAll(".opts").forEach((o) => o.remove());
+    for (; shownMsgs < s.messages.length; shownMsgs++) bubble(s.messages[shownMsgs].role, s.messages[shownMsgs].text);
+    const last = s.messages[s.messages.length - 1];
+    const open = last && last.role === "assistant" && last.gap_id && !s.gaps.find((g) => g.id === last.gap_id)?.resolved;
+    if (open && last.options.length) {
+      log.append(el("div", { class: "opts" }, last.options.map((o) => el("button", { class: o.value === "approve" ? "primary" : "", onclick: () => reply({ gap_id: last.gap_id, value: o.value }, o.label) }, o.label))));
+      log.scrollTop = log.scrollHeight;
+    }
+    setComposer(true, open ? (last.free_text_hint || "Type a reply…") : "Type a new rule…");
+    rulesBox.replaceChildren(el("div", {},
+      el("p", { class: "muted" }, `${s.ruleset.rules.length} rules · read by ${s.drafter}${s.grant_ids.length ? " · checked against " + s.grant_ids.length + " grant(s)" : ""}`),
+      s.ruleset.rules.map((r) => el("div", { class: "item" }, pill(r.status, r.status.toUpperCase()), " ", describe(r),
+        el("div", { class: "quote" }, `“${r.citation.quote}” (${r.citation.page === s.chat_page ? "from this chat" : `${s.source}, p. ${r.citation.page}`})`),
+        (r.params.clarifications || []).map((c) => el("div", { class: "muted" }, `↳ ${c.answer}`))))));
+  }
+  async function reply(body, shown) {
+    if (busy || !chat) return;
+    busy = true; log.querySelectorAll(".opts button").forEach((b) => (b.disabled = true)); setComposer(false);
+    if (shown) { bubble("user", shown); shownMsgs++; }
+    typing(true);
+    try {
+      await new Promise((r) => setTimeout(r, 300));
+      const s = await post(`/api/chat/${chat.session_id}/reply`, body);
+      typing(false); render(s); refresh();
+    } catch (e) { typing(false); bubble("assistant", `Sorry, that didn't work: ${e.message}`); render(chat); }
+    finally { busy = false; }
+  }
+  async function start(fd, shown) {
+    if (busy) return;
+    busy = true; log.querySelectorAll(".opts button").forEach((b) => (b.disabled = true));
+    bubble("user", shown); typing(true);
+    const grants = state.rulesets.filter((r) => r.kind === "grant").map((r) => r.id);
+    fd.append("grant_ids", grants.join(","));
+    try {
+      const s = await api("/api/chat/start", { method: "POST", body: fd });
+      typing(false); log.replaceChildren(); shownMsgs = 0; render(s); refresh();
+    } catch (e) { typing(false); bubble("assistant", `Sorry, I couldn't read that: ${e.message}`); }
+    finally { busy = false; log.querySelectorAll(".opts button").forEach((b) => (b.disabled = false)); }
+  }
+  let typedStart = false;
+  composer.addEventListener("submit", (ev) => {
+    ev.preventDefault();
+    const text = input.value.trim(); if (!text) return;
+    input.value = "";
+    if (!chat) { if (typedStart) { const fd = new FormData(); fd.append("text", text); start(fd, text); } return; }
+    const last = chat.messages[chat.messages.length - 1];
+    const open = last && last.gap_id && !chat.gaps.find((g) => g.id === last.gap_id)?.resolved;
+    reply({ gap_id: open ? last.gap_id : null, text }, text);
+  });
+  $("policyFile").onchange = () => {
+    const f = $("policyFile").files[0]; if (!f) return;
+    const fd = new FormData(); fd.append("file", f); fd.append("name", f.name.replace(/\.[^.]+$/, "")); $("policyFile").value = "";
+    start(fd, `📎 ${f.name}`);
+  };
+
+  chat = null; shownMsgs = 0;
+  if (policy) { render(await api(`/api/chat/${policy.id}`)); return; }
+  const grants = state.rulesets.filter((r) => r.kind === "grant");
+  bubble("assistant", "Hi! Let's set up your company's expense rules.\n\nUpload your expense policy (PDF or text) and I'll read it into rules, each linked to the page it came from. Then we'll go through anything vague, missing or with exceptions, one question at a time." +
+    (grants.length ? `\n\nI'll also check it against your grant: ${grants.map((g) => g.name).join(", ")}.` : "\n\nTip: add a grant first and I'll flag where it's stricter than your policy."));
+  log.append(el("div", { class: "opts" },
+    el("button", { class: "primary", onclick: () => $("policyFile").click() }, "Upload policy"),
+    el("button", { onclick: () => { const fd = new FormData(); fd.append("sample", "northwind"); fd.append("name", "Northwind University FIN-204"); start(fd, "Use the sample: Northwind University travel & expense policy (5 pages)"); } }, "Use a sample policy"),
+    el("button", { onclick: () => { typedStart = true; setComposer(true, "Type your rules, e.g. No alcohol. Meals up to $75."); input.focus(); } }, "Type rules instead")));
+}
+
+// ---------- rulebook ----------
+async function viewRulebook(v) {
+  v.append(el("h1", {}, "Rulebook"), el("p", { class: "muted" }, "Every rule from every source. Expenses are checked against all approved rules at once; the strictest answer wins. Examples come from the real engine."));
+  if (!state.rulesets.length) { v.append(el("div", { class: "card muted" }, "No rules yet. Add a grant or set up your company policy.")); return; }
+  for (const rs of state.rulesets) {
+    const cards = await api(`/api/rulesets/${rs.id}/cards`);
+    const pending = rs.rules - rs.approved;
+    v.append(el("div", { class: "card" },
+      el("div", { class: "row", style: "justify-content:space-between" },
+        el("div", {}, el("h2", {}, rs.name), el("div", { class: "muted" }, `${rs.kind === "grant" ? "Grant agreement" : "Company policy"} · ${rs.approved}/${rs.rules} approved${rs.open_items ? ` · ${rs.open_items} open questions` : ""}`)),
+        pending ? el("button", { class: "primary", onclick: async () => { await post(`/api/rulesets/${rs.id}/approve`, {}); route(); } }, "Approve all") : pill("approved", "ALL APPROVED")),
+      cards.map((c) => ruleCard(c, rs.id))));
+  }
+}
+
+// ---------- expenses ----------
+async function viewExpenses(v) {
+  if (!categories.length) categories = await api("/api/categories");
+  const ids = approvedIds();
+  const roles = new Set();
+  for (const rs of state.rulesets) {
+    const full = await api(`/api/rulesets/${rs.id}`);
+    full.rules.forEach((r) => r.params.approver_role && roles.add(r.params.approver_role));
+  }
+  const f = {
+    memo: el("input", { value: "Dr. Lee · Earth Sciences · Boston hotel, 2 nights" }),
+    amount: el("input", { value: "640.00" }),
+    category: el("select", {}, categories.map((c) => el("option", { value: c, selected: c === "lodging" }, label(c)))),
+    merchant: el("input", { value: "Harborview Hotel Boston" }),
+    date: el("input", { type: "date", value: "2026-06-12" }),
+    receipt: el("input", { type: "checkbox", checked: true }),
+    prior: el("input", { type: "checkbox" }),
+  };
+  const roleBoxes = [...roles].sort().map((r) => ({ r, box: el("input", { type: "checkbox" }) }));
+  const rsBoxes = state.rulesets.filter((r) => r.approved).map((r) => ({ id: r.id, box: el("input", { type: "checkbox", checked: true }), name: r.name }));
+  const result = el("div");
+  const logBox = el("div");
+  let budgetBox = budgetCard();
+  const refreshBudget = () => { const fresh = budgetCard(); budgetBox.replaceWith(fresh); budgetBox = fresh; };
+  let filter = "ALL";
+
+  async function check() {
+    const cents = toCents(f.amount.value);
+    if (cents === null) { result.replaceChildren(el("p", { class: "err" }, "Enter an amount like 640.00")); return; }
+    const expense = { id: `EXP-${Date.now().toString().slice(-5)}`, memo: f.memo.value, amount_cents: cents, date: f.date.value, merchant: f.merchant.value || "Unknown",
+      category: f.category.value, has_receipt: f.receipt.checked, has_prior_approval: f.prior.checked, approvals: roleBoxes.filter((x) => x.box.checked).map((x) => x.r) };
+    try {
+      const item = await post("/api/expenses/check", { expense, ruleset_ids: rsBoxes.filter((x) => x.box.checked).map((x) => x.id) });
+      result.replaceChildren(resultCard(item));
+      await refresh(); renderLog(); refreshBudget();
+    } catch (e) { result.replaceChildren(el("p", { class: "err" }, e.message)); }
+  }
+  async function renderLog() {
+    const log = await api("/api/expenses");
+    const shown = filter === "ALL" ? log : log.filter((i) => i.result.verdict === filter);
+    const counts = { ALL: log.length, ALLOWED: 0, NEEDS_REVIEW: 0, BLOCKED: 0 };
+    log.forEach((i) => counts[i.result.verdict]++);
+    logBox.replaceChildren(
+      el("div", { class: "row" }, ["ALL", "ALLOWED", "NEEDS_REVIEW", "BLOCKED"].map((k) =>
+        el("button", { class: `small ${filter === k ? "primary" : ""}`, onclick: () => { filter = k; renderLog(); } }, `${k === "ALL" ? "All" : verdictText(k)} (${counts[k]})`))),
+      shown.length ? expenseTable(shown) : el("p", { class: "muted" }, "Nothing here yet."));
+  }
+
+  v.append(el("h1", {}, "Expenses"),
+    el("p", { class: "muted" }, "Check an expense before it's paid. It's checked against every selected rulebook at once, and allowed spend comes off the grant budget."),
+    ids.length ? "" : el("div", { class: "card err" }, "No approved rules yet: add a grant or company policy and approve its rules first."),
+    el("div", { class: "split" },
+      el("div", { class: "card" }, el("h2", {}, "Check an expense"),
+        el("div", { class: "form" },
+          el("div", { style: "grid-column:1/-1" }, el("label", { class: "f" }, "Description"), f.memo),
+          el("div", {}, el("label", { class: "f" }, "Amount ($)"), f.amount),
+          el("div", {}, el("label", { class: "f" }, "Category"), f.category),
+          el("div", {}, el("label", { class: "f" }, "Merchant"), f.merchant),
+          el("div", {}, el("label", { class: "f" }, "Date"), f.date)),
+        el("h3", {}, "Documentation and approvals"),
+        el("div", {}, el("label", { class: "cb" }, f.receipt, "Receipt attached"), el("label", { class: "cb" }, f.prior, "Sponsor's prior written approval")),
+        roleBoxes.length ? el("div", {}, el("span", { class: "muted" }, "Approved by: "), roleBoxes.map((x) => el("label", { class: "cb" }, x.box, role(x.r)))) : "",
+        el("h3", {}, "Check against"),
+        rsBoxes.length ? el("div", {}, rsBoxes.map((x) => el("label", { class: "cb" }, x.box, x.name))) : el("p", { class: "muted" }, "No approved rulebooks."),
+        el("div", { class: "row", style: "margin-top:12px" },
+          el("button", { class: "primary", onclick: check, disabled: !ids.length }, "Check expense"),
+          el("button", { disabled: !ids.length, onclick: async (ev) => { ev.target.disabled = true; await post("/api/expenses/sample-batch", {}); await refresh(); renderLog(); refreshBudget(); ev.target.disabled = false; } }, "Run 16 sample expenses")),
+        result),
+      budgetBox),
+    el("div", { class: "card" }, el("h2", {}, "History"), logBox));
+  renderLog();
+}
+function resultCard(item) {
+  const r = item.result, e = item.expense;
+  const issues = r.traces.filter((t) => t.outcome !== "PASS");
+  return el("div", { class: "item", style: "margin-top:12px" },
+    el("div", { class: "verdict" }, pill(r.verdict, verdictText(r.verdict).toUpperCase()), ` ${money(e.amount_cents)} · ${label(e.category)}`),
+    el("p", { class: "muted" }, `Checked ${r.traces.length} applicable rules from ${item.ruleset_ids.length} rulebook(s) in ${r.latency_ms} ms.${item.recorded_spend ? " Spend recorded against the grant budget." : ""}`),
+    issues.length ? issues.map(traceRow) : el("p", {}, "Every applicable rule passed."),
+    el("details", {}, el("summary", { class: "muted" }, "All rules checked"), r.traces.map(traceRow)));
+}
+function traceRow(t) {
+  return el("div", { class: "item" }, pill(t.outcome, t.outcome), " ",
+    el("b", {}, t.source === "grant" ? `Grant, p. ${t.citation.page}` : "Company policy"), `: ${t.reason}`,
+    el("div", { class: "quote" }, `“${t.citation.quote}”`),
+    t.fix ? el("div", {}, el("span", { class: "muted" }, "What would make it OK: "), t.fix) : "");
+}
+function expenseTable(items) {
+  return el("table", {}, el("tr", {}, el("th", {}, "Expense"), el("th", {}, "Verdict"), el("th", {}, "Decided by / fix")),
+    items.map(({ expense: e, result: r }) => {
+      const issues = r.traces.filter((t) => t.outcome !== "PASS");
+      return el("tr", {},
+        el("td", {}, el("b", {}, money(e.amount_cents)), ` ${e.memo || e.merchant}`, el("div", { class: "muted" }, `${e.id} · ${label(e.category)} · ${e.merchant}${e.approvals.length ? " · approved by " + e.approvals.map(role).join(", ") : ""}`)),
+        el("td", {}, pill(r.verdict, verdictText(r.verdict).toUpperCase())),
+        el("td", {}, issues.length ? issues.map((t) => el("div", {}, el("b", {}, t.source === "grant" ? `Grant p.${t.citation.page}` : "Policy"), `: ${t.reason}`,
+          t.fix ? el("div", { class: "muted" }, `Fix: ${t.fix}`) : "")) : el("span", { class: "muted" }, "All rules passed")));
+    }));
+}
+
+$("resetBtn").addEventListener("click", async () => {
+  if (!confirm("Clear all grants, policies and expenses?")) return;
+  await post("/api/reset"); chat = null; shownMsgs = 0; go("overview");
+});
+route();
+</script>
+</body>
+</html>

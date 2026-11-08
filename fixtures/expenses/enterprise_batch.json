@@ -1,19 +1,186 @@
 {
   "_note": "Fictional expenses for Northwind University, charged to the demo grant (Community Climate Research Award). Amounts in integer cents.",
   "expenses": [
-    {"id": "NW-1001", "memo": "Dr. Lee · Earth Sciences · Economy flight to AGU conference", "amount_cents": 61200, "date": "2026-06-10", "merchant": "United Airlines", "category": "airfare", "has_receipt": true, "approvals": []},
-    {"id": "NW-1002", "memo": "Dr. Patel · Physics · First-class upgrade, 4-hour flight", "amount_cents": 184000, "date": "2026-06-11", "merchant": "Delta Air Lines", "category": "first_class_airfare", "has_receipt": true, "approvals": ["manager"]},
-    {"id": "NW-1003", "memo": "Dr. Lee · Earth Sciences · Boston hotel, 3 nights (one folio)", "amount_cents": 105000, "date": "2026-06-12", "merchant": "Harborview Hotel Boston", "category": "lodging", "has_receipt": true, "approvals": ["manager"]},
-    {"id": "NW-1004", "memo": "M. Gomez · Research Admin · Team dinner, 8 people", "amount_cents": 54000, "date": "2026-06-12", "merchant": "Legal Sea Foods", "category": "meals", "has_receipt": true, "approvals": []},
-    {"id": "NW-1005", "memo": "Development Office · Wine for donor dinner", "amount_cents": 18000, "date": "2026-06-14", "merchant": "Riverside Wine Bar", "category": "alcohol", "has_receipt": true, "approvals": []},
-    {"id": "NW-1006", "memo": "Prof. Chen · Chemistry · Mass spectrometer service contract", "amount_cents": 4800000, "date": "2026-07-01", "merchant": "Meridian Instruments", "category": "equipment", "has_receipt": true, "approvals": ["manager", "department_director"], "has_prior_approval": true},
-    {"id": "NW-1007", "memo": "Prof. Chen · Chemistry · -80°C lab freezer", "amount_cents": 1240000, "date": "2026-07-02", "merchant": "ThermoCold Scientific", "category": "equipment", "has_receipt": true, "approvals": ["manager"]},
-    {"id": "NW-1008", "memo": "Lab manager · Office supplies", "amount_cents": 8600, "date": "2026-07-03", "merchant": "Amazon Marketplace", "category": "supplies", "has_receipt": true, "approvals": []},
-    {"id": "NW-1009", "memo": "Dr. Patel · Physics · Uber to airport", "amount_cents": 6400, "date": "2026-07-05", "merchant": "Uber", "category": "ground_transport", "has_receipt": false, "approvals": []},
-    {"id": "NW-1010", "memo": "Development Office · Gala table", "amount_cents": 250000, "date": "2026-08-01", "merchant": "City Gala Foundation", "category": "fundraising", "has_receipt": true, "approvals": ["manager"]},
-    {"id": "NW-1011", "memo": "Dr. Lee · Conference registration after award end", "amount_cents": 45000, "date": "2027-03-10", "merchant": "AGU", "category": "travel_domestic", "has_receipt": true, "approvals": []},
-    {"id": "NW-1012", "memo": "Dept. of Physics · Thank-you gift for external reviewer", "amount_cents": 15000, "date": "2026-07-08", "merchant": "Corner Gifts", "category": "gifts", "has_receipt": true, "approvals": []},
-    {"id": "NW-1013", "memo": "Research Computing · Annual design software license", "amount_cents": 960000, "date": "2026-07-09", "merchant": "Figma", "category": "software", "has_receipt": true, "approvals": ["manager", "it"]},
-    {"id": "NW-1014", "memo": "Research Computing · GPU cluster nodes", "amount_cents": 6200000, "date": "2026-07-15", "merchant": "Northstar Compute", "category": "equipment", "has_receipt": true, "approvals": ["manager", "department_director"], "has_prior_approval": true}
+    {
+      "id": "NW-1001",
+      "memo": "Dr. Lee · Earth Sciences · Economy flight to AGU conference",
+      "amount_cents": 61200,
+      "date": "2026-06-10",
+      "merchant": "United Airlines",
+      "category": "airfare",
+      "has_receipt": true,
+      "approvals": []
+    },
+    {
+      "id": "NW-1002",
+      "memo": "Dr. Patel · Physics · First-class upgrade, 4-hour flight",
+      "amount_cents": 184000,
+      "date": "2026-06-11",
+      "merchant": "Delta Air Lines",
+      "category": "first_class_airfare",
+      "has_receipt": true,
+      "approvals": [
+        "manager"
+      ]
+    },
+    {
+      "id": "NW-1003",
+      "memo": "Dr. Lee · Earth Sciences · Boston hotel, 3 nights (one folio)",
+      "amount_cents": 105000,
+      "date": "2026-06-12",
+      "merchant": "Harborview Hotel Boston",
+      "category": "lodging",
+      "has_receipt": true,
+      "approvals": [
+        "manager"
+      ]
+    },
+    {
+      "id": "NW-1004",
+      "memo": "M. Gomez · Research Admin · Team dinner, 8 people",
+      "amount_cents": 54000,
+      "date": "2026-06-12",
+      "merchant": "Legal Sea Foods",
+      "category": "meals",
+      "has_receipt": true,
+      "approvals": []
+    },
+    {
+      "id": "NW-1005",
+      "memo": "Development Office · Wine for donor dinner",
+      "amount_cents": 18000,
+      "date": "2026-06-14",
+      "merchant": "Riverside Wine Bar",
+      "category": "alcohol",
+      "has_receipt": true,
+      "approvals": []
+    },
+    {
+      "id": "NW-1006",
+      "memo": "Prof. Chen · Chemistry · Mass spectrometer service contract",
+      "amount_cents": 4800000,
+      "date": "2026-07-01",
+      "merchant": "Meridian Instruments",
+      "category": "equipment",
+      "has_receipt": true,
+      "approvals": [
+        "manager",
+        "department_director"
+      ],
+      "has_prior_approval": true
+    },
+    {
+      "id": "NW-1007",
+      "memo": "Prof. Chen · Chemistry · -80°C lab freezer",
+      "amount_cents": 1240000,
+      "date": "2026-07-02",
+      "merchant": "ThermoCold Scientific",
+      "category": "equipment",
+      "has_receipt": true,
+      "approvals": [
+        "manager"
+      ]
+    },
+    {
+      "id": "NW-1008",
+      "memo": "Lab manager · Office supplies",
+      "amount_cents": 8600,
+      "date": "2026-07-03",
+      "merchant": "Amazon Marketplace",
+      "category": "supplies",
+      "has_receipt": true,
+      "approvals": []
+    },
+    {
+      "id": "NW-1009",
+      "memo": "Dr. Patel · Physics · Uber to airport",
+      "amount_cents": 6400,
+      "date": "2026-07-05",
+      "merchant": "Uber",
+      "category": "ground_transport",
+      "has_receipt": false,
+      "approvals": []
+    },
+    {
+      "id": "NW-1010",
+      "memo": "Development Office · Gala table",
+      "amount_cents": 250000,
+      "date": "2026-08-01",
+      "merchant": "City Gala Foundation",
+      "category": "fundraising",
+      "has_receipt": true,
+      "approvals": [
+        "manager"
+      ]
+    },
+    {
+      "id": "NW-1011",
+      "memo": "Dr. Lee · Conference registration after award end",
+      "amount_cents": 45000,
+      "date": "2027-03-10",
+      "merchant": "AGU",
+      "category": "travel_domestic",
+      "has_receipt": true,
+      "approvals": []
+    },
+    {
+      "id": "NW-1012",
+      "memo": "Dept. of Physics · Thank-you gift for external reviewer",
+      "amount_cents": 15000,
+      "date": "2026-07-08",
+      "merchant": "Corner Gifts",
+      "category": "gifts",
+      "has_receipt": true,
+      "approvals": []
+    },
+    {
+      "id": "NW-1013",
+      "memo": "Research Computing · Annual design software license",
+      "amount_cents": 960000,
+      "date": "2026-07-09",
+      "merchant": "Figma",
+      "category": "software",
+      "has_receipt": true,
+      "approvals": [
+        "manager",
+        "it"
+      ]
+    },
+    {
+      "id": "NW-1014",
+      "memo": "Research Computing · GPU cluster nodes",
+      "amount_cents": 6200000,
+      "date": "2026-07-15",
+      "merchant": "Northstar Compute",
+      "category": "equipment",
+      "has_receipt": true,
+      "approvals": [
+        "manager",
+        "department_director"
+      ],
+      "has_prior_approval": true
+    },
+    {
+      "id": "NW-1015",
+      "memo": "Field team · Amtrak to Woods Hole field site",
+      "amount_cents": 38000,
+      "date": "2026-07-20",
+      "merchant": "Amtrak",
+      "category": "travel_domestic",
+      "has_receipt": true,
+      "approvals": []
+    },
+    {
+      "id": "NW-1016",
+      "memo": "Prof. Chen · Chemistry · Analytical balance",
+      "amount_cents": 480000,
+      "date": "2026-07-22",
+      "merchant": "Mettler Lab Supply",
+      "category": "equipment",
+      "has_receipt": true,
+      "approvals": [
+        "manager"
+      ]
+    }
   ]
 }

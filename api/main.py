@@ -40,6 +40,7 @@ app = FastAPI(title="Fineprint API", version="0.3.0")
 DEMO_PDF = Path(__file__).resolve().parents[1] / "fixtures" / "grants" / "demo_grant.pdf"
 PLAYGROUND_HTML = Path(__file__).resolve().parent / "static" / "playground.html"
 CHAT_HTML = Path(__file__).resolve().parent / "static" / "chat.html"
+APP_HTML = Path(__file__).resolve().parent / "static" / "app.html"
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 SAMPLE_POLICIES = {"northwind": FIXTURES / "policies" / "northwind_te_policy.pdf"}
 SAMPLE_BATCH = FIXTURES / "expenses" / "enterprise_batch.json"
@@ -65,6 +66,10 @@ LLM_TRANSPORT: Transport = anthropic_transport
 RULESETS: dict[str, Ruleset] = {SAMPLE_RULESET.grant_id: SAMPLE_RULESET}
 DRAFTS: dict[str, PolicyDraft] = {}
 SESSIONS: dict[str, PolicySession] = {}
+GRANTS: dict[str, "CompileResponse"] = {}  # compile details (coverage etc.) by grant id
+SAMPLE_IDS = {SAMPLE_RULESET.grant_id}  # bundled fixture, hidden from the app
+BUDGET: BudgetState = DEMO_BUDGET.model_copy(deep=True)  # live budget, spent on ALLOWED
+EXPENSE_LOG: list["LoggedExpense"] = []
 
 app.add_middleware(
     CORSMiddleware,
@@ -163,7 +168,7 @@ def enforce_endpoint(req: EnforceRequest) -> EnforcementResult:
 
 def _compile_response(result: CompileResult) -> CompileResponse:
     RULESETS[result.ruleset.grant_id] = result.ruleset
-    return CompileResponse(
+    response = CompileResponse(
         ruleset=result.ruleset,
         rejected=result.rejected,
         flagged=result.flagged,
@@ -173,6 +178,8 @@ def _compile_response(result: CompileResult) -> CompileResponse:
         rejected_count=len(result.rejected),
         proposer=result.proposer,
     )
+    GRANTS[result.ruleset.grant_id] = response
+    return response
 
 
 @app.post("/api/compile/demo", response_model=CompileResponse)
@@ -342,6 +349,7 @@ async def chat_start(
     text: str | None = Form(None),
     name: str = Form("Company expense policy"),
     link_demo_grant: bool = Form(False),
+    grant_ids: str = Form(""),
 ) -> PolicySession:
     """Start a setup chat from an uploaded policy, a bundled sample, or typed rules."""
     if file is not None and file.filename:
@@ -356,8 +364,8 @@ async def chat_start(
     else:
         raise HTTPException(status_code=400, detail="Upload a policy, pick a sample, or type rules")
 
-    grants: list[Ruleset] = []
-    if link_demo_grant:
+    grants: list[Ruleset] = [_get_ruleset(g) for g in grant_ids.split(",") if g.strip()]
+    if link_demo_grant and not grants:
         compiled = _compile_response(
             compile_grant_pdf(DEMO_PDF.read_bytes(), "Community Climate Research Award (demo)")
         )
@@ -418,3 +426,141 @@ def batch(req: BatchRequest) -> list[BatchItem]:
     expenses = req.expenses if req.expenses is not None else sample_expenses()
     budget = req.budget_state or DEMO_BUDGET
     return [BatchItem(expense=e, result=evaluate_expense(e, rulesets, budget)) for e in expenses]
+
+
+# --- Full app: state, expense log, live budget ----------------------------------
+
+
+@app.get("/app", response_class=HTMLResponse)
+def app_page() -> str:
+    """The full Fineprint app: overview, grants, policy chat, rulebook, expenses."""
+    return APP_HTML.read_text(encoding="utf-8")
+
+
+class RulesetSummary(BaseModel):
+    id: str
+    name: str
+    kind: str  # "grant" or "policy"
+    rules: int
+    approved: int
+    open_items: int
+
+
+class LoggedExpense(BaseModel):
+    expense: Expense
+    result: EnforcementResult
+    ruleset_ids: list[str]
+    recorded_spend: bool
+
+
+class AppState(BaseModel):
+    rulesets: list[RulesetSummary]
+    budget: BudgetState
+    expenses_checked: int
+    verdicts: dict[str, int]
+    llm_enabled: bool
+
+
+def _summaries() -> list[RulesetSummary]:
+    out: list[RulesetSummary] = []
+    for rid, rs in RULESETS.items():
+        if rid in SAMPLE_IDS:
+            continue
+        session = SESSIONS.get(rid)
+        open_items = (
+            sum(1 for g in session.gaps if not g.resolved and g.kind != "final") if session else 0
+        )
+        out.append(
+            RulesetSummary(
+                id=rid,
+                name=rs.grant_name,
+                kind="policy" if rid in SESSIONS or rid in DRAFTS else "grant",
+                rules=len(rs.rules),
+                approved=sum(r.status == "approved" for r in rs.rules),
+                open_items=open_items,
+            )
+        )
+    return out
+
+
+@app.get("/api/state", response_model=AppState)
+def app_state() -> AppState:
+    verdicts = {"ALLOWED": 0, "NEEDS_REVIEW": 0, "BLOCKED": 0}
+    for item in EXPENSE_LOG:
+        verdicts[item.result.verdict.value] += 1
+    return AppState(
+        rulesets=_summaries(),
+        budget=BUDGET,
+        expenses_checked=len(EXPENSE_LOG),
+        verdicts=verdicts,
+        llm_enabled=use_llm(),
+    )
+
+
+@app.get("/api/grants/{grant_id}", response_model=CompileResponse)
+def grant_details(grant_id: str) -> CompileResponse:
+    info = GRANTS.get(grant_id)
+    if info is None:
+        raise HTTPException(status_code=404, detail=f"No grant '{grant_id}'")
+    return info.model_copy(update={"ruleset": _get_ruleset(grant_id)})
+
+
+class CheckRequest(BaseModel):
+    expense: Expense
+    ruleset_ids: list[str] | None = None  # None = every rulebook with approved rules
+    record: bool = True  # add to the log, and spend the budget if ALLOWED
+
+
+def _check(expense: Expense, ruleset_ids: list[str] | None, record: bool) -> LoggedExpense:
+    ids = ruleset_ids
+    if ids is None:
+        ids = [s.id for s in _summaries() if s.approved]
+    if not ids:
+        raise HTTPException(status_code=400, detail="No approved rules yet")
+    result = evaluate_expense(expense, [_get_ruleset(i) for i in ids], BUDGET)
+    spent = False
+    if record and result.verdict.value == "ALLOWED":
+        line = BUDGET.lines.get(expense.category)
+        if line is not None:
+            BUDGET.lines[expense.category] = line.model_copy(
+                update={"spent_cents": line.spent_cents + expense.amount_cents}
+            )
+            spent = True
+    item = LoggedExpense(expense=expense, result=result, ruleset_ids=ids, recorded_spend=spent)
+    if record:
+        EXPENSE_LOG.insert(0, item)
+    return item
+
+
+@app.post("/api/expenses/check", response_model=LoggedExpense)
+def expenses_check(req: CheckRequest) -> LoggedExpense:
+    return _check(req.expense, req.ruleset_ids, req.record)
+
+
+class SampleBatchRequest(BaseModel):
+    ruleset_ids: list[str] | None = None
+
+
+@app.post("/api/expenses/sample-batch", response_model=list[LoggedExpense])
+def expenses_sample_batch(req: SampleBatchRequest) -> list[LoggedExpense]:
+    """Run the bundled enterprise expenses through the live rulebook and budget."""
+    return [_check(e, req.ruleset_ids, True) for e in sample_expenses()]
+
+
+@app.get("/api/expenses", response_model=list[LoggedExpense])
+def expenses_log() -> list[LoggedExpense]:
+    return EXPENSE_LOG
+
+
+@app.post("/api/reset")
+def reset() -> dict[str, str]:
+    """Clear all grants, policies, expenses and budget spend (fresh demo)."""
+    for rid in [r for r in RULESETS if r not in SAMPLE_IDS]:
+        del RULESETS[rid]
+    DRAFTS.clear()
+    SESSIONS.clear()
+    GRANTS.clear()
+    EXPENSE_LOG.clear()
+    BUDGET.lines.clear()
+    BUDGET.lines.update(DEMO_BUDGET.model_copy(deep=True).lines)
+    return {"status": "reset"}

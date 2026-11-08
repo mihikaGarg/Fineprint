@@ -27,3 +27,5 @@ One line each: date, decision, why.
 - 2026-11-07 — Same-type questions are grouped (e.g. one "block or review?" for all approval tiers) to keep big-company setup short.
 - 2026-11-07 — Prohibitions with "except/unless" can be set to review instead of block; categories are read only from the rule clause, not its exception.
 - 2026-11-07 — Added airfare and ground_transport categories so flight and taxi rules don't collide with general travel budget lines.
+- 2026-11-07 — Full working app served by the API at /app (overview, grants with coverage, policy chat, rulebook, expenses with live budget and history) so the whole flow can be demoed without the Next.js app or a key; the Next.js UI is still where the polished version will live.
+- 2026-11-07 — Allowed expenses spend the grant budget line matching their category; app state (rulebooks, log, budget) is in memory with POST /api/reset for a fresh demo.
