@@ -1,0 +1,14 @@
+{
+  "_note": "A pretend Claude answer for the bundled sample grant. The first five are correct; the last four are the kinds of mistakes a model can make, and each should be rejected.",
+  "rules": [
+    {"rule_type": "period_of_performance", "page": 2, "quote": "The period of performance shall be from January 1, 2026 through December 31, 2026."},
+    {"rule_type": "budget_limit", "page": 7, "quote": "Domestic travel necessary to carry out the project is an allowable cost, subject to the approved budget."},
+    {"rule_type": "category_prohibition", "page": 12, "quote": "Costs of alcoholic beverages and entertainment are unallowable under this award."},
+    {"rule_type": "budget_limit", "page": 15, "quote": "Equipment expenditures are allowable up to the approved line item budget."},
+    {"rule_type": "threshold_approval", "page": 15, "quote": "Capital expenditures for special purpose equipment having a unit cost of $5,000 or more require prior written approval."},
+    {"rule_type": "category_prohibition", "page": 12, "quote": "Costs of lobbying are unallowable under this award."},
+    {"rule_type": "category_prohibition", "page": 12, "quote": "Alcohol costs are not allowed under this award."},
+    {"rule_type": "category_prohibition", "page": 7, "quote": "Costs of alcoholic beverages and entertainment are unallowable under this award."},
+    {"rule_type": "threshold_approval", "page": 15, "quote": "Capital expenditures for special purpose equipment require prior written approval."}
+  ]
+}
