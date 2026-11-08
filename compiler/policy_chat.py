@@ -32,7 +32,9 @@ from compiler.propose import SENTENCE_SPLIT_RE, parse_dollars_to_cents
 from contracts.models import Ruleset, SpendRule
 from enforce.rules import format_cents
 
-GapKind = Literal["question", "exception", "vague", "unsupported", "missing", "conflict", "final"]
+GapKind = Literal[
+    "question", "exception", "narrow", "vague", "unsupported", "missing", "conflict", "final"
+]
 
 EXCEPT_RE = re.compile(r"\b(except|unless|other than|without prior)\b", re.IGNORECASE)
 VAGUE_RE = re.compile(
@@ -90,6 +92,8 @@ class Gap(BaseModel):
     page: int | None = None
     quote: str | None = None
     category: str | None = None
+    # For "narrow" gaps: the held-back rule, applied to the whole category if the user agrees.
+    rule: SpendRule | None = None
     resolved: bool = False
 
 
@@ -115,6 +119,18 @@ class PolicySession(BaseModel):
     not_rules: list[dict[str, str]] = Field(default_factory=list[dict[str, str]])
     grant_ids: list[str] = Field(default_factory=list[str])
     approved: bool = False
+
+
+def _scope(rule: SpendRule) -> str:
+    """What a rule would cover if applied to its whole category, e.g. "domestic travel"."""
+    cats: list[str] = rule.params.get("categories") or rule.params.get("prohibited_categories", [])
+    what = " and ".join(label(c) for c in cats) or "expenses"
+    threshold = int(rule.params.get("threshold_cents") or rule.params.get("cap_cents") or 0)
+    if rule.rule_type == "approval_required" and threshold:
+        return f"{what} from {format_cents(threshold)}"
+    if rule.rule_type == "per_item_cap":
+        return f"{what} over {format_cents(threshold)}"
+    return what
 
 
 def describe(rule: SpendRule) -> str:
@@ -238,6 +254,34 @@ def find_gaps(draft: PolicyDraft, grants: list[Ruleset]) -> list[Gap]:
                     quote=r.citation.quote,
                 )
             )
+
+    for x in draft.rejected:
+        if "narrow" not in x:
+            continue
+        held = SpendRule.model_validate(x["narrow"]["rule"])
+        phrase = x["narrow"]["phrase"]
+        scope = _scope(held)
+        gaps.append(
+            Gap(
+                id=f"narrow:{held.id}",
+                kind="narrow",
+                prompt=(
+                    f'"{held.citation.quote}" (p. {held.citation.page}) is only about {phrase}. '
+                    f"I can't tell {phrase} apart from other {scope}, so I'd have to apply it to "
+                    f"all {scope}. What should I do?"
+                ),
+                options=[
+                    ChatOption(
+                        label=f"Apply it to all {scope}, but send them for review", value="review"
+                    ),
+                    ChatOption(label=f"Apply it to all {scope} and block", value="block"),
+                    ChatOption(label=f"Skip it; someone checks {phrase} by hand", value="skip"),
+                ],
+                page=held.citation.page,
+                quote=held.citation.quote,
+                rule=held,
+            )
+        )
 
     for x in draft.rejected:
         quote = str(x["candidate"].get("quote", "")).strip()
@@ -388,6 +432,7 @@ def _summary(s: PolicySession, draft: PolicyDraft) -> str:
     phrases = {
         "question": ("needs a detail", "need a detail"),
         "exception": ("has an exception", "have exceptions"),
+        "narrow": ("is narrower than I can check", "are narrower than I can check"),
         "vague": ("is too vague to enforce", "are too vague to enforce"),
         "unsupported": ("isn't supported yet", "aren't supported yet"),
     }
@@ -683,6 +728,28 @@ def _resolve(s: PolicySession, gap: Gap, value: str, shown: str) -> str:
 
     if value == "skip":
         return "OK, skipping that."
+
+    if gap.kind == "narrow" and gap.rule is not None:
+        rule = gap.rule.model_copy(
+            update={
+                "id": f"{s.session_id}_{len(s.ruleset.rules) + 1:02d}",
+                "params": {
+                    **gap.rule.params,
+                    "action": value,
+                    "clarifications": [
+                        *gap.rule.params.get("clarifications", []),
+                        {
+                            "question": (
+                                f"Applies to all {_scope(gap.rule)}, not just what the policy names"
+                            ),
+                            "answer": shown,
+                        },
+                    ],
+                },
+            }
+        )
+        s.ruleset = s.ruleset.model_copy(update={"rules": [*s.ruleset.rules, rule]})
+        return f"Done: {describe(rule)}."
 
     if gap.kind == "unsupported" and gap.quote and gap.page:
         result = _add_rule(

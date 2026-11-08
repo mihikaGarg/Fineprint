@@ -22,6 +22,7 @@ from typing import Any, cast
 from pydantic import BaseModel, Field
 
 from compiler.citation import verify_citation
+from compiler.narrow import narrower_scope
 from compiler.propose import parse_dollars_to_cents
 from contracts.models import KNOWN_CATEGORIES, Ruleset, SpendRule
 from shared.llm import Effort, LLMError, LLMRequest, Transport, anthropic_transport, complete_json
@@ -367,6 +368,20 @@ def draft_from_items(
             rejected.append({"candidate": item, "reason": built})
             continue
         rule, open_qs = built
+        cats: list[str] = rule.params.get("categories") or rule.params.get(
+            "prohibited_categories", []
+        )
+        if phrase := narrower_scope(rule.citation.quote, rule.rule_type, cats):
+            # Enforcing this on the whole category would catch far more than the policy
+            # says; hold it back so a person decides (the chat asks).
+            rejected.append(
+                {
+                    "candidate": {**item, "page": rule.citation.page, "quote": rule.citation.quote},
+                    "reason": f'Only covers "{phrase}", which is narrower than any category',
+                    "narrow": {"phrase": phrase, "rule": rule.model_dump(mode="json")},
+                }
+            )
+            continue
         rules.append(rule)
         questions.extend(open_qs)
 
