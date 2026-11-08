@@ -13,7 +13,7 @@ as not understood rather than guessed.
 import re
 from typing import Any
 
-from compiler.propose import SENTENCE_SPLIT_RE
+from compiler.sentences import split_sentences
 
 CATEGORY_WORDS: dict[str, tuple[str, ...]] = {
     "alcohol": ("alcohol", "wine", "beer", "liquor", "drinks", "bar tab"),
@@ -97,10 +97,10 @@ def read_policy(pages: dict[int, str] | str) -> dict[str, Any]:
 def _read_page(
     page: int, text: str, rules: list[dict[str, Any]], not_rules: list[dict[str, str]]
 ) -> None:
-    for raw in SENTENCE_SPLIT_RE.split(text):
-        sentence = raw.strip()
-        if not sentence:
+    for segment in split_sentences(text):
+        if segment.heading:
             continue
+        sentence = segment.text
         lower = sentence.lower()
         # Categories come from the rule itself, not its exception
         # ("No alcohol except at client entertainment events" bans alcohol only).

@@ -29,7 +29,8 @@ from compiler.policy import (
     _build_rule,  # pyright: ignore[reportPrivateUsage]
 )
 from compiler.policy_offline import CATEGORY_WORDS, read_policy
-from compiler.propose import SENTENCE_SPLIT_RE, parse_dollars_to_cents
+from compiler.propose import parse_dollars_to_cents
+from compiler.sentences import split_sentences
 from contracts.models import Ruleset, SpendRule
 from enforce.rules import format_cents
 
@@ -199,10 +200,10 @@ def _categories(text: str) -> list[str]:
 
 def _sentences(pages: dict[int, str]) -> list[tuple[int, str]]:
     return [
-        (page, s.strip())
+        (page, s.text)
         for page, text in sorted(pages.items())
-        for s in SENTENCE_SPLIT_RE.split(text)
-        if s.strip()
+        for s in split_sentences(text)
+        if not s.heading
     ]
 
 
