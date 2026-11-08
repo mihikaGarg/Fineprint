@@ -19,7 +19,7 @@ from contracts import (
 
 def test_schema_version_is_semver() -> None:
     assert len(SCHEMA_VERSION.split(".")) == 3
-    assert SCHEMA_VERSION == "0.3.0"
+    assert SCHEMA_VERSION == "0.4.0"
 
 
 def test_verdict_values() -> None:

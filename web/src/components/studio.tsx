@@ -115,6 +115,14 @@ export function InteractiveStudio() {
       const res = await request();
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data: CompileResponse = await res.json();
+      // Compiled rules start as "proposed" and aren't enforced until approved.
+      // Until the review screen exists, approve them all so the demo can enforce.
+      const approved = await fetch(`${API_BASE}/api/rulesets/${data.ruleset.grant_id}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (approved.ok) data.ruleset = await approved.json();
       setRuleset(data.ruleset);
       setCompileInfo(data);
       setUploadStatus(

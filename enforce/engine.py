@@ -1,4 +1,5 @@
 import time
+from collections.abc import Sequence
 
 from contracts.models import (
     BudgetState,
@@ -14,10 +15,14 @@ from enforce.rules import evaluate_rule, is_rule_applicable
 
 def evaluate_expense(
     expense: Expense,
-    ruleset: Ruleset,
+    ruleset: Ruleset | Sequence[Ruleset],
     budget_state: BudgetState,
 ) -> EnforcementResult:
-    """Evaluate an expense against a grant ruleset and current budget state.
+    """Evaluate an expense against one or more rulesets and current budget state.
+
+    Several rulesets (e.g. a grant and the company's own policy) are checked
+    together; the strictest outcome wins, and each trace says which source
+    decided. Only approved rules are enforced.
 
     Guarantees:
     - Pure deterministic evaluation (no LLM, no external I/O).
@@ -26,22 +31,24 @@ def evaluate_expense(
     - Ambiguity escalates to NEEDS_REVIEW; failures block to BLOCKED.
     """
     start_ns = time.perf_counter_ns()
+    rulesets = [ruleset] if isinstance(ruleset, Ruleset) else list(ruleset)
 
     traces: list[RuleTrace] = []
     has_fail = False
     has_escalate = False
 
-    for rule in ruleset.rules:
-        if not is_rule_applicable(rule, expense):
-            continue
+    for rs in rulesets:
+        for rule in rs.rules:
+            if rule.status != "approved" or not is_rule_applicable(rule, expense):
+                continue
 
-        trace = evaluate_rule(rule, expense, budget_state)
-        traces.append(trace)
+            trace = evaluate_rule(rule, expense, budget_state)
+            traces.append(trace)
 
-        if trace.outcome == RuleOutcome.FAIL:
-            has_fail = True
-        elif trace.outcome == RuleOutcome.ESCALATE:
-            has_escalate = True
+            if trace.outcome == RuleOutcome.FAIL:
+                has_fail = True
+            elif trace.outcome == RuleOutcome.ESCALATE:
+                has_escalate = True
 
     if has_fail:
         verdict = Verdict.BLOCKED

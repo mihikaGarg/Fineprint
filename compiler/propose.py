@@ -64,6 +64,8 @@ class Candidate:
 class Proposal:
     candidates: list[Candidate] = field(default_factory=list[Candidate])
     rejected: list[dict[str, Any]] = field(default_factory=list[dict[str, Any]])
+    # Clauses that might be rules but are ambiguous; shown to a person, never enforced.
+    flagged: list[dict[str, Any]] = field(default_factory=list[dict[str, Any]])
 
 
 def parse_dates(text: str) -> list[date]:

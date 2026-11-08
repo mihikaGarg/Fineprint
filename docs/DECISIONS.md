@@ -15,3 +15,9 @@ One line each: date, decision, why.
 - 2026-11-07 — Default model claude-opus-5-5 at effort "medium", overridable via FINEPRINT_LLM_MODEL; server-side fallback ("default") enabled so a refusal re-runs on Anthropic's recommended model.
 - 2026-11-07 — LLM is used for uploads only when ANTHROPIC_API_KEY is set (FINEPRINT_PROPOSER=keyword forces offline); on LLM failure the compile falls back to the keyword proposer and reports it. Fixtures and tests always use the keyword proposer.
 - 2026-11-07 — Root conftest strips ANTHROPIC_API_KEY and redirects the LLM cache for every test; a repo scan test fails on anything shaped like an Anthropic key.
+- 2026-11-07 — Rules have status proposed/approved; only approved rules are enforced, and grant compiles produce proposed rules — nothing AI-extracted blocks a payment before a person approves it (studio auto-approves until the review screen exists).
+- 2026-11-07 — Company policy rules are drafted from the user's own text; the user's sentence is the citation, amounts are parsed by code, enum fields are validated, and anything unclear becomes a multiple-choice question whose answer is recorded on the rule.
+- 2026-11-07 — Several rulesets (grant + company policy) are evaluated together; the strictest outcome wins and each trace records its source. Every FAIL/ESCALATE carries a deterministic "fix" hint.
+- 2026-11-07 — Rule-card examples run the real engine on synthetic expenses, so examples can never disagree with enforcement.
+- 2026-11-07 — Coverage report classifies every clause (rule / flagged / rejected / no rule); the LLM can flag ambiguous clauses, which are verified like rules but never enforced.
+- 2026-11-07 — Rulebook store is in-memory for now (api/main.py RULESETS/DRAFTS); persistence stays with b/persistence.
