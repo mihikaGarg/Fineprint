@@ -5,6 +5,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from compiler.budget import BudgetItem, read_budget
 from compiler.citation import verify_citation
 from compiler.coverage import Coverage, build_coverage
 from compiler.extractor import UnreadablePdfError, extract_pdf_pages
@@ -24,6 +25,7 @@ class CompileResult:
     rejected: list[dict[str, Any]]
     flagged: list[dict[str, Any]]
     coverage: Coverage
+    budget: list[BudgetItem]
     proposer: str = "keyword"
 
 
@@ -77,6 +79,7 @@ def compile_pages_full(
         rejected=rejected,
         flagged=proposal.flagged,
         coverage=build_coverage(pages, ruleset, rejected, proposal.flagged),
+        budget=read_budget(pages),
     )
 
 

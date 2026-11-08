@@ -5,8 +5,9 @@ from typing import Any
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictInt
 
+from compiler.budget import BudgetItem
 from compiler.coverage import Coverage
 from compiler.examples import RuleExample, examples_for
 from compiler.extractor import UnreadablePdfError, extract_pdf_pages
@@ -25,6 +26,7 @@ from compiler.policy_chat import PolicySession, ReplyError, reply, start_session
 from compiler.policy_offline import read_policy
 from contracts.models import (
     KNOWN_CATEGORIES,
+    BudgetLine,
     BudgetState,
     EnforcementResult,
     Expense,
@@ -69,7 +71,10 @@ DRAFTS: dict[str, PolicyDraft] = {}
 SESSIONS: dict[str, PolicySession] = {}
 GRANTS: dict[str, "CompileResponse"] = {}  # compile details (coverage etc.) by grant id
 SAMPLE_IDS = {SAMPLE_RULESET.grant_id}  # bundled fixture, hidden from the app
-BUDGET: BudgetState = DEMO_BUDGET.model_copy(deep=True)  # live budget, spent on ALLOWED
+# Live budget per grant (read from the agreement or entered), spent on ALLOWED.
+BUDGETS: dict[str, BudgetState] = {}
+# Where each budget line came from, per grant: the cited budget item, or None if entered by hand.
+BUDGET_SOURCES: dict[str, dict[str, BudgetItem | None]] = {}
 EXPENSE_LOG: list["LoggedExpense"] = []
 
 app.add_middleware(
@@ -97,6 +102,7 @@ class CompileResponse(BaseModel):
     verified_count: int
     rejected_count: int
     proposer: str
+    budget: list[BudgetItem] = Field(default_factory=list[BudgetItem])
 
 
 class PolicyDraftRequest(BaseModel):
@@ -167,8 +173,23 @@ def enforce_endpoint(req: EnforceRequest) -> EnforcementResult:
     return evaluate_expense(expense=req.expense, ruleset=rulesets, budget_state=req.budget_state)
 
 
+def _store_budget(grant_id: str, items: list[BudgetItem]) -> None:
+    """Budget lines from the agreement; keeps spend already recorded on a re-upload."""
+    old = BUDGETS.get(grant_id, BudgetState())
+    lines = dict(old.lines)
+    sources = BUDGET_SOURCES.setdefault(grant_id, {})
+    for item in items:
+        spent = old.lines[item.line].spent_cents if item.line in old.lines else 0
+        lines[item.line] = BudgetLine(
+            category=item.line, allocated_cents=item.allocated_cents, spent_cents=spent
+        )
+        sources[item.line] = item
+    BUDGETS[grant_id] = BudgetState(lines=lines)
+
+
 def _compile_response(result: CompileResult) -> CompileResponse:
     RULESETS[result.ruleset.grant_id] = result.ruleset
+    _store_budget(result.ruleset.grant_id, result.budget)
     response = CompileResponse(
         ruleset=result.ruleset,
         rejected=result.rejected,
@@ -178,6 +199,7 @@ def _compile_response(result: CompileResult) -> CompileResponse:
         verified_count=len(result.ruleset.rules),
         rejected_count=len(result.rejected),
         proposer=result.proposer,
+        budget=result.budget,
     )
     GRANTS[result.ruleset.grant_id] = response
     return response
@@ -452,7 +474,10 @@ def batch(req: BatchRequest) -> list[BatchItem]:
         raise HTTPException(status_code=400, detail="Send at least one ruleset id")
     expenses = req.expenses if req.expenses is not None else sample_expenses()
     budget = req.budget_state or DEMO_BUDGET
-    return [BatchItem(expense=e, result=evaluate_expense(e, rulesets, budget)) for e in expenses]
+    return [
+        BatchItem(expense=e, result=evaluate_expense(e, rulesets, budget, BUDGETS))
+        for e in expenses
+    ]
 
 
 # --- Full app: state, expense log, live budget ----------------------------------
@@ -478,11 +503,29 @@ class LoggedExpense(BaseModel):
     result: EnforcementResult
     ruleset_ids: list[str]
     recorded_spend: bool
+    spent_on: str | None = None
+
+
+class BudgetLineView(BaseModel):
+    line: str
+    label: str
+    allocated_cents: int
+    spent_cents: int
+    remaining_cents: int
+    source: str  # "p. 5: “Domestic travel: $8,000”" or "entered by you"
+
+
+class GrantBudget(BaseModel):
+    grant_id: str
+    name: str
+    lines: list[BudgetLineView]
+    # Budget lines the grant's rules refer to but the agreement didn't give an amount for.
+    missing: list[str]
 
 
 class AppState(BaseModel):
     rulesets: list[RulesetSummary]
-    budget: BudgetState
+    budgets: list[GrantBudget]
     expenses_checked: int
     verdicts: dict[str, int]
     llm_enabled: bool
@@ -517,11 +560,71 @@ def app_state() -> AppState:
         verdicts[item.result.verdict.value] += 1
     return AppState(
         rulesets=_summaries(),
-        budget=BUDGET,
+        budgets=[_grant_budget(s.id) for s in _summaries() if s.kind == "grant"],
         expenses_checked=len(EXPENSE_LOG),
         verdicts=verdicts,
         llm_enabled=use_llm(),
     )
+
+
+LINE_NAMES = {"travel_domestic": "Domestic travel", "travel_foreign": "Foreign travel"}
+
+
+def _grant_budget(grant_id: str) -> GrantBudget:
+    rs = _get_ruleset(grant_id)
+    budget = BUDGETS.get(grant_id, BudgetState())
+    sources = BUDGET_SOURCES.get(grant_id, {})
+    views: list[BudgetLineView] = []
+    for key, line in budget.lines.items():
+        item = sources.get(key)
+        views.append(
+            BudgetLineView(
+                line=key,
+                label=item.label
+                if item
+                else LINE_NAMES.get(key, key.replace("_", " ").capitalize()),
+                allocated_cents=line.allocated_cents,
+                spent_cents=line.spent_cents,
+                remaining_cents=max(0, line.allocated_cents - line.spent_cents),
+                source=f"p. {item.citation.page}: “{item.citation.quote}”"
+                if item
+                else "entered by you",
+            )
+        )
+    needed = {
+        str(r.params["budget_line"])
+        for r in rs.rules
+        if r.rule_type == "budget_limit" and r.params.get("budget_line")
+    }
+    return GrantBudget(
+        grant_id=grant_id,
+        name=rs.grant_name,
+        lines=views,
+        missing=sorted(needed - set(budget.lines)),
+    )
+
+
+@app.get("/api/grants/{grant_id}/budget", response_model=GrantBudget)
+def grant_budget(grant_id: str) -> GrantBudget:
+    return _grant_budget(grant_id)
+
+
+class BudgetLineRequest(BaseModel):
+    line: str
+    allocated_cents: StrictInt = Field(gt=0)
+
+
+@app.post("/api/grants/{grant_id}/budget", response_model=GrantBudget)
+def grant_budget_set(grant_id: str, req: BudgetLineRequest) -> GrantBudget:
+    """Enter (or correct) one budget line by hand, e.g. when the agreement doesn't list it."""
+    _get_ruleset(grant_id)
+    budget = BUDGETS.setdefault(grant_id, BudgetState())
+    spent = budget.lines[req.line].spent_cents if req.line in budget.lines else 0
+    budget.lines[req.line] = BudgetLine(
+        category=req.line, allocated_cents=req.allocated_cents, spent_cents=spent
+    )
+    BUDGET_SOURCES.setdefault(grant_id, {})[req.line] = None
+    return _grant_budget(grant_id)
 
 
 @app.get("/api/grants/{grant_id}", response_model=CompileResponse)
@@ -544,19 +647,31 @@ def _check(expense: Expense, ruleset_ids: list[str] | None, record: bool) -> Log
         ids = [s.id for s in _summaries() if s.approved]
     if not ids:
         raise HTTPException(status_code=400, detail="No approved rules yet")
-    result = evaluate_expense(expense, [_get_ruleset(i) for i in ids], BUDGET)
-    spent = False
-    # Allowed spend comes off the grant budget, but only if a grant was checked.
-    charged_to_grant = any(i not in SESSIONS and i not in DRAFTS for i in ids)
-    if record and charged_to_grant and result.verdict.value == "ALLOWED":
+    grant_ids = [i for i in ids if i not in SESSIONS and i not in DRAFTS]
+    result = evaluate_expense(
+        expense,
+        [_get_ruleset(i) for i in ids],
+        BudgetState(),
+        {g: BUDGETS.get(g, BudgetState()) for g in grant_ids},
+    )
+    spent_on: str | None = None
+    # Allowed spend comes off the budget of the one grant it was checked against.
+    if record and len(grant_ids) == 1 and result.verdict.value == "ALLOWED":
+        budget = BUDGETS.get(grant_ids[0], BudgetState())
         line_key = budget_line_for(expense.category)
-        line = BUDGET.lines.get(line_key)
+        line = budget.lines.get(line_key)
         if line is not None:
-            BUDGET.lines[line_key] = line.model_copy(
+            budget.lines[line_key] = line.model_copy(
                 update={"spent_cents": line.spent_cents + expense.amount_cents}
             )
-            spent = True
-    item = LoggedExpense(expense=expense, result=result, ruleset_ids=ids, recorded_spend=spent)
+            spent_on = f"{_get_ruleset(grant_ids[0]).grant_name}: {line_key}"
+    item = LoggedExpense(
+        expense=expense,
+        result=result,
+        ruleset_ids=ids,
+        recorded_spend=spent_on is not None,
+        spent_on=spent_on,
+    )
     if record:
         EXPENSE_LOG.insert(0, item)
     return item
@@ -591,6 +706,6 @@ def reset() -> dict[str, str]:
     SESSIONS.clear()
     GRANTS.clear()
     EXPENSE_LOG.clear()
-    BUDGET.lines.clear()
-    BUDGET.lines.update(DEMO_BUDGET.model_copy(deep=True).lines)
+    BUDGETS.clear()
+    BUDGET_SOURCES.clear()
     return {"status": "reset"}

@@ -210,16 +210,37 @@ async function viewOverview(v) {
       log.length ? expenseTable(log.slice(0, 6)) : el("p", { class: "muted" }, "No expenses checked yet.")),
   );
 }
+function budgetLines(b, onChange) {
+  const rows = b.lines.map((l) => {
+    const pct = l.allocated_cents ? Math.min(100, Math.round((l.spent_cents / l.allocated_cents) * 100)) : 0;
+    return el("div", { class: "item" },
+      el("div", { class: "row", style: "justify-content:space-between" },
+        el("b", {}, l.label), el("span", { class: "muted" }, `${money(l.spent_cents)} of ${money(l.allocated_cents)} spent · ${money(l.remaining_cents)} left`)),
+      el("div", { class: "bar" }, el("span", { style: `width:${pct}%;background:${pct > 90 ? "var(--bad)" : "var(--ok)"}` })),
+      el("div", { class: "quote" }, l.source));
+  });
+  const missing = b.missing.map((line) => {
+    const input = el("input", { placeholder: "e.g. 5,000", style: "max-width:140px" });
+    const msg = el("span", { class: "err" });
+    return el("div", { class: "item" },
+      el("div", {}, el("b", {}, label(line)), el("span", { class: "muted" }, ": a rule refers to this budget line, but the agreement doesn't give an amount.")),
+      el("div", { class: "row" }, el("span", { class: "muted" }, "Approved amount $"), input,
+        el("button", { class: "small primary", onclick: async () => {
+          const cents = toCents(input.value);
+          if (!cents) { msg.textContent = "Enter an amount like 5000"; return; }
+          await post(`/api/grants/${b.grant_id}/budget`, { line, allocated_cents: cents });
+          onChange();
+        } }, "Save"), msg));
+  });
+  if (!rows.length && !missing.length) return [el("p", { class: "muted" }, "No budget table found in this agreement.")];
+  return [...rows, ...missing];
+}
 function budgetCard() {
-  const lines = Object.entries(state.budget.lines);
-  return el("div", { class: "card" }, el("h2", {}, "Grant budget"),
-    el("p", { class: "muted" }, "Spend is recorded when an expense is allowed."),
-    lines.map(([k, l]) => {
-      const pct = Math.min(100, Math.round((l.spent_cents / l.allocated_cents) * 100));
-      return el("div", { class: "item" }, el("div", { class: "row", style: "justify-content:space-between" },
-        el("b", {}, label(k)), el("span", { class: "muted" }, `${money(l.spent_cents)} of ${money(l.allocated_cents)} (${pct}%)`)),
-        el("div", { class: "bar" }, el("span", { style: `width:${pct}%;background:${pct > 90 ? "var(--bad)" : "var(--ok)"}` })));
-    }));
+  return el("div", { class: "card" }, el("h2", {}, "Grant budgets"),
+    el("p", { class: "muted" }, "Read from each agreement's budget table. Spend is recorded when an expense is allowed."),
+    state.budgets.length
+      ? state.budgets.map((b) => el("div", {}, state.budgets.length > 1 ? el("h3", {}, b.name) : "", budgetLines(b, route)))
+      : el("p", { class: "muted" }, "Add a grant to see its budget."));
 }
 
 // ---------- grants ----------
@@ -259,6 +280,8 @@ async function grantCard(id) {
     el("p", { class: "muted" }, `${c.rules} became rules · ${c.flagged} flagged as ambiguous · ${c.rejected} rejected · ${c.no_rule} with no spending rule`),
     el("h3", {}, "Rules"),
     cards.map((card) => ruleCard(card, id)),
+    el("h3", {}, "Approved budget"),
+    budgetLines(state.budgets.find((b) => b.grant_id === id) || { grant_id: id, lines: [], missing: [] }, route),
     g.rejected.length ? el("details", {}, el("summary", { class: "muted" }, `Rejected suggestions (${g.rejected.length}): never became rules`),
       g.rejected.map((x) => el("div", { class: "item" }, el("span", { class: "err" }, x.reason), el("div", { class: "quote" }, `“${x.candidate.quote}” (p. ${x.candidate.page})`)))) : "",
     el("details", {}, el("summary", { class: "muted" }, `Every clause (${c.total})`),
@@ -455,9 +478,16 @@ function resultCard(item) {
   const issues = r.traces.filter((t) => t.outcome !== "PASS");
   return el("div", { class: "item", style: "margin-top:12px" },
     el("div", { class: "verdict" }, pill(r.verdict, verdictText(r.verdict).toUpperCase()), ` ${money(e.amount_cents)} · ${label(e.category)}`),
-    el("p", { class: "muted" }, `Checked ${r.traces.length} applicable rules from ${item.ruleset_ids.length} rulebook(s) in ${r.latency_ms} ms.${item.recorded_spend ? " Spend recorded against the grant budget." : ""}`),
+    el("p", { class: "muted" }, `Checked ${r.traces.length} applicable rules from ${item.ruleset_ids.length} rulebook(s) in ${r.latency_ms} ms.${item.spent_on ? ` Spend recorded: ${item.spent_on.replace(/_/g, " ")}.` : ""}${spendNote(item)}`),
     issues.length ? issues.map(traceRow) : el("p", {}, "Every applicable rule passed."),
     el("details", {}, el("summary", { class: "muted" }, "All rules checked"), r.traces.map(traceRow)));
+}
+function spendNote(item) {
+  if (item.spent_on || item.result.verdict !== "ALLOWED") return "";
+  const grants = item.ruleset_ids.filter((id) => state.rulesets.find((r) => r.id === id)?.kind === "grant");
+  if (grants.length > 1) return " Spend not recorded: it was checked against several grants, so tick only the grant it's charged to.";
+  if (!grants.length) return " Spend not recorded: no grant was checked.";
+  return " Spend not recorded: this grant has no budget line for that category.";
 }
 function traceRow(t) {
   return el("div", { class: "item" }, pill(t.outcome, t.outcome), " ",

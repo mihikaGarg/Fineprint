@@ -120,7 +120,8 @@ def test_budget_spend_and_travel_categories() -> None:
     )
 
     def state() -> int:
-        return client.get("/api/state").json()["budget"]["lines"]["travel_domestic"]["spent_cents"]
+        lines = client.get(f"/api/grants/{gid}/budget").json()["lines"]
+        return next(line["spent_cents"] for line in lines if line["line"] == "travel_domestic")
 
     start = state()
     client.post(
@@ -139,7 +140,7 @@ def test_budget_spend_and_travel_categories() -> None:
     res = client.post(
         "/api/expenses/check",
         json={
-            "expense": expense(amount_cents=500_000, category="lodging"),
+            "expense": expense(amount_cents=790_000, category="lodging"),
             "ruleset_ids": [gid],
             "record": False,
         },
@@ -172,3 +173,58 @@ def test_unknown_category_rejected() -> None:
         "/api/expenses/check", json={"expense": expense(category="spaceship"), "record": False}
     )
     assert res.status_code == 422
+
+
+def test_grant_budget_comes_from_the_agreement_and_missing_lines_can_be_entered() -> None:
+    client.post("/api/reset")
+    gid = demo_grant()
+    b = client.get(f"/api/grants/{gid}/budget").json()
+    travel = next(line for line in b["lines"] if line["line"] == "travel_domestic")
+    assert travel["allocated_cents"] == 800_000 and travel["source"].startswith("p. 5:")
+    assert b["missing"] == []
+
+    # A grant whose rules mention a budget line the agreement doesn't price.
+    pdf_text_grant = client.post(
+        "/api/compile",
+        files={"file": ("demo.pdf", api_main.DEMO_PDF.read_bytes(), "application/pdf")},
+    ).json()
+    assert pdf_text_grant["budget"]  # same document, budget re-read
+
+    b = client.post(
+        f"/api/grants/{gid}/budget", json={"line": "travel_foreign", "allocated_cents": 300_000}
+    ).json()
+    foreign = next(line for line in b["lines"] if line["line"] == "travel_foreign")
+    assert foreign["source"] == "entered by you" and foreign["remaining_cents"] == 300_000
+    assert (
+        client.post(
+            f"/api/grants/{gid}/budget", json={"line": "x", "allocated_cents": 12.5}
+        ).status_code
+        == 422
+    )
+
+
+def test_each_grant_keeps_its_own_budget() -> None:
+    from compiler.pipeline import compile_pages_full
+
+    client.post("/api/reset")
+    gid = demo_grant()
+    other = compile_pages_full(
+        {
+            1: "Domestic travel necessary for the project is allowable within the approved budget.",
+            2: "Approved budget\nDomestic travel: $500",
+        },
+        "grant_small",
+        "Small grant",
+        status="approved",
+    )
+    api_main._compile_response(other)  # pyright: ignore[reportPrivateUsage]
+    trip = expense(amount_cents=60_000, category="travel_domestic")
+    big = client.post(
+        "/api/expenses/check", json={"expense": trip, "ruleset_ids": [gid], "record": False}
+    ).json()
+    small = client.post(
+        "/api/expenses/check",
+        json={"expense": trip, "ruleset_ids": ["grant_small"], "record": False},
+    ).json()
+    assert big["result"]["verdict"] == "ALLOWED"  # $600 of $8,000
+    assert small["result"]["verdict"] == "BLOCKED"  # $600 of $500
