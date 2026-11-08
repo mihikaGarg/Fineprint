@@ -17,7 +17,7 @@ Rules come out `proposed` and are only enforced after a person approves them.
 
 import hashlib
 import re
-from typing import Any
+from typing import Any, cast
 
 from pydantic import BaseModel, Field
 
@@ -71,6 +71,7 @@ class PolicyDraft(BaseModel):
     draft_id: str
     name: str
     text: str
+    drafter: str = "llm"  # "llm" or "offline ..." (which reader produced the rules)
     ruleset: Ruleset
     questions: list[Question] = Field(default_factory=list[Question])
     rejected: list[dict[str, Any]] = Field(default_factory=list[dict[str, Any]])
@@ -309,18 +310,24 @@ def draft_policy(
     transport: Transport = anthropic_transport,
     effort: Effort = "medium",
 ) -> PolicyDraft:
-    """Turn plain-English policy text into proposed rules plus open questions."""
+    """Turn plain-English policy text into proposed rules plus open questions, using Claude."""
     text = text.strip()
     if not text:
         raise ValueError("Policy text is empty")
     request = LLMRequest(system=SYSTEM_PROMPT, prompt=text, schema=POLICY_SCHEMA, effort=effort)
-    data = complete_json(request, transport=transport)
-    try:
-        items: list[dict[str, Any]] = data["rules"]
-        not_rules: list[dict[str, Any]] = data.get("not_rules", [])
-    except (KeyError, TypeError, AttributeError) as e:
-        raise LLMError("Model output did not match the policy schema") from e
+    data: Any = complete_json(request, transport=transport)
+    if not isinstance(data, dict):
+        raise LLMError("Model output did not match the policy schema")
+    parsed: dict[str, Any] = cast(dict[str, Any], data)
+    if not isinstance(parsed.get("rules"), list):
+        raise LLMError("Model output did not match the policy schema")
+    return draft_from_items(text, name, parsed, drafter="llm")
 
+
+def draft_from_items(text: str, name: str, data: dict[str, Any], drafter: str) -> PolicyDraft:
+    """Validate proposed rule items (from Claude or the offline reader) into a draft."""
+    items: list[dict[str, Any]] = data.get("rules", [])
+    not_rules: list[dict[str, Any]] = data.get("not_rules", [])
     draft_id = "policy_" + hashlib.sha256(text.encode()).hexdigest()[:12]
     rules: list[SpendRule] = []
     questions: list[Question] = []
@@ -338,6 +345,7 @@ def draft_policy(
         draft_id=draft_id,
         name=name,
         text=text,
+        drafter=drafter,
         ruleset=Ruleset(grant_id=draft_id, grant_name=name, rules=rules),
         questions=questions,
         rejected=rejected,

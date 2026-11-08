@@ -134,3 +134,40 @@ def test_answers_must_be_one_of_the_options() -> None:
         apply_answers(d, {d.questions[0].id: "approve_everything"})
     with pytest.raises(AnswerError):
         apply_answers(d, {"nope": "review"})
+
+
+def test_offline_reader_handles_common_phrasings() -> None:
+    from compiler.policy import draft_from_items
+    from compiler.policy_offline import read_policy
+
+    text = (
+        "No alcohol. Meals up to $75. Gifts over $100 require the CEO's approval. "
+        "Don't buy from Amazon or Walmart. Receipts over $25. No first class flights. "
+        "Hotels up to $250 per night. Submit within 30 days."
+    )
+    d = draft_from_items(text, "P", read_policy(text), "offline")
+    got = {
+        (
+            r.rule_type,
+            tuple(
+                r.params.get("categories")
+                or r.params.get("prohibited_categories")
+                or r.params.get("merchants")
+                or []
+            ),
+        )
+        for r in d.ruleset.rules
+    }
+    assert got == {
+        ("category_prohibition", ("alcohol",)),
+        ("per_item_cap", ("meals",)),
+        ("approval_required", ("gifts",)),
+        ("merchant_restriction", ("Amazon", "Walmart")),
+        ("receipt_required", ()),
+        ("category_prohibition", ("first_class_airfare",)),
+    }
+    approval = next(r for r in d.ruleset.rules if r.rule_type == "approval_required")
+    assert approval.params["approver_role"] == "ceo"
+    assert approval.params["threshold_cents"] == 10_000
+    assert any("period limits" in x["reason"] for x in d.rejected)
+    assert [n["quote"] for n in d.not_rules] == ["Submit within 30 days."]

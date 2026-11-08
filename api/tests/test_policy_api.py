@@ -116,6 +116,17 @@ def test_compiled_grant_rules_start_proposed_and_report_coverage() -> None:
     assert cov["rules"] >= 4
 
 
-def test_policy_needs_a_key_without_a_fake(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_policy_works_offline_without_a_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(api_main, "LLM_TRANSPORT", api_main.anthropic_transport)
-    assert client.post("/api/policy/draft", json={"text": TEXT}).status_code == 503
+    draft = client.post("/api/policy/draft", json={"text": TEXT}).json()
+    assert draft["drafter"] == "offline"
+    assert [r["rule_type"] for r in draft["ruleset"]["rules"]] == [
+        "category_prohibition",
+        "per_item_cap",
+        "approval_required",
+    ]
+
+
+def test_playground_page_and_categories_are_served() -> None:
+    assert "Fineprint playground" in client.get("/playground").text
+    assert "meals" in client.get("/api/categories").json()

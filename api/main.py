@@ -3,20 +3,30 @@ from typing import Any
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 from compiler.coverage import Coverage
 from compiler.examples import RuleExample, examples_for
-from compiler.pipeline import CompileResult, compile_grant_pdf
+from compiler.pipeline import CompileResult, compile_grant_pdf, use_llm
 from compiler.policy import (
     AnswerError,
     PolicyDraft,
     Question,
     apply_answers,
+    draft_from_items,
     draft_policy,
     open_question_rule_ids,
 )
-from contracts.models import BudgetState, EnforcementResult, Expense, Ruleset, SpendRule
+from compiler.policy_offline import read_policy
+from contracts.models import (
+    KNOWN_CATEGORIES,
+    BudgetState,
+    EnforcementResult,
+    Expense,
+    Ruleset,
+    SpendRule,
+)
 from enforce.engine import evaluate_expense
 from fixtures.sample_data import SAMPLE_BUDGET, SAMPLE_EXPENSES, SAMPLE_PAGES, SAMPLE_RULESET
 from shared.llm import LLMError, Transport, anthropic_transport, is_configured
@@ -24,6 +34,7 @@ from shared.llm import LLMError, Transport, anthropic_transport, is_configured
 app = FastAPI(title="Fineprint API", version="0.3.0")
 
 DEMO_PDF = Path(__file__).resolve().parents[1] / "fixtures" / "grants" / "demo_grant.pdf"
+PLAYGROUND_HTML = Path(__file__).resolve().parent / "static" / "playground.html"
 
 # Swapped for a fake in tests.
 LLM_TRANSPORT: Transport = anthropic_transport
@@ -82,7 +93,23 @@ class RuleCard(BaseModel):
 
 @app.get("/api/health")
 def health() -> dict[str, Any]:
-    return {"status": "ok", "service": "Fineprint API", "llm_configured": is_configured()}
+    return {
+        "status": "ok",
+        "service": "Fineprint API",
+        "llm_configured": is_configured(),
+        "llm_enabled": use_llm(),
+    }
+
+
+@app.get("/api/categories")
+def categories() -> list[str]:
+    return list(KNOWN_CATEGORIES)
+
+
+@app.get("/playground", response_class=HTMLResponse)
+def playground() -> str:
+    """Bare-bones test page for the policy assistant and enforcement."""
+    return PLAYGROUND_HTML.read_text(encoding="utf-8")
 
 
 @app.get("/api/fixtures")
@@ -157,16 +184,21 @@ def _store_draft(draft: PolicyDraft) -> PolicyDraft:
 
 @app.post("/api/policy/draft", response_model=PolicyDraft)
 def policy_draft(req: PolicyDraftRequest) -> PolicyDraft:
-    """Turn plain-English company rules into proposed rules plus multiple-choice questions."""
-    if not is_configured() and LLM_TRANSPORT is anthropic_transport:
-        raise HTTPException(status_code=503, detail="The policy assistant needs ANTHROPIC_API_KEY")
-    try:
-        draft = draft_policy(req.text, name=req.name, transport=LLM_TRANSPORT)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
-    except LLMError as e:
-        raise HTTPException(status_code=502, detail=str(e)) from e
-    return _store_draft(draft)
+    """Turn plain-English company rules into proposed rules plus multiple-choice questions.
+
+    Uses Claude when a key is set and enabled (or a test transport is installed);
+    otherwise, or if Claude fails, the offline reader.
+    """
+    text = req.text.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Policy text is empty")
+    if LLM_TRANSPORT is not anthropic_transport or use_llm():
+        try:
+            return _store_draft(draft_policy(text, name=req.name, transport=LLM_TRANSPORT))
+        except LLMError as e:
+            fallback = f"offline (Claude unavailable: {e})"
+            return _store_draft(draft_from_items(text, req.name, read_policy(text), fallback))
+    return _store_draft(draft_from_items(text, req.name, read_policy(text), "offline"))
 
 
 @app.get("/api/policy/{draft_id}", response_model=PolicyDraft)

@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fineprint playground</title>
+<style>
+  :root { --bg:#f7f4ec; --card:#fffdf7; --ink:#16181d; --muted:#5b5f68; --rule:#ddd6c6;
+    --ok:#1f7a4d; --okbg:#e3f2e8; --bad:#b42318; --badbg:#fbe5e2; --rev:#a15c07; --revbg:#fcefd6; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#121317; --card:#1b1d22; --ink:#ecebe6;
+    --muted:#a2a5ad; --rule:#2e3138; --ok:#5fd39a; --okbg:#16301f; --bad:#ff8a7a; --badbg:#3a1a17;
+    --rev:#f4b860; --revbg:#36270f; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.5 system-ui, sans-serif; }
+  main { max-width: 980px; margin: auto; padding: 24px 16px 80px; }
+  h1 { margin: 0 0 4px; font-family: Georgia, serif; font-weight: 400; }
+  h2 { font-family: Georgia, serif; font-weight: 400; margin: 0 0 8px; }
+  section { background: var(--card); border: 1px solid var(--rule); border-radius: 12px; padding: 16px; margin: 16px 0; }
+  .muted { color: var(--muted); font-size: 13px; }
+  textarea, input, select { width: 100%; font: inherit; color: inherit; background: var(--bg);
+    border: 1px solid var(--rule); border-radius: 8px; padding: 8px; }
+  textarea { min-height: 110px; }
+  button { font: inherit; cursor: pointer; border-radius: 999px; padding: 7px 14px;
+    border: 1px solid var(--rule); background: var(--bg); color: var(--ink); margin: 6px 6px 0 0; }
+  button.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  button:disabled { opacity: .5; cursor: default; }
+  .grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+  label.f { display: block; font-size: 12px; color: var(--muted); }
+  .item { border-top: 1px solid var(--rule); padding: 8px 0; }
+  .quote { font-family: Georgia, serif; }
+  .pill { display: inline-block; font: 600 11px ui-monospace, monospace; padding: 2px 8px; border-radius: 999px; }
+  .ALLOWED, .PASS, .approved { background: var(--okbg); color: var(--ok); }
+  .BLOCKED, .FAIL { background: var(--badbg); color: var(--bad); }
+  .NEEDS_REVIEW, .ESCALATE, .proposed { background: var(--revbg); color: var(--rev); }
+  .big { font-size: 22px; margin: 8px 0; }
+  .q { background: var(--revbg); border-radius: 8px; padding: 10px; margin: 8px 0; }
+  .q label { display: block; margin: 4px 0; cursor: pointer; }
+  .q input { width: auto; margin-right: 6px; }
+  .err { color: var(--bad); }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .check { display: flex; align-items: center; gap: 6px; font-size: 14px; }
+  .check input { width: auto; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Fineprint playground</h1>
+  <p class="muted" id="mode">Checking API…</p>
+
+  <section>
+    <h2>1. Company rules</h2>
+    <p class="muted">Type your expense rules in plain English, one per sentence.</p>
+    <textarea id="policyText">No alcohol. Meals up to $75 per person. Anything over $5,000 needs the finance director. Never buy from Amazon. Receipts are required for anything over $25. No first class flights. Hotels up to $250 per night. Please submit expenses within 30 days.</textarea>
+    <button class="primary" id="draftBtn">Turn into rules</button>
+    <div id="draftOut"></div>
+  </section>
+
+  <section>
+    <h2>2. Grant agreement (optional)</h2>
+    <p class="muted">Load the fictional demo grant so expenses are checked against it too.</p>
+    <button id="grantBtn">Load demo grant</button>
+    <div id="grantOut"></div>
+  </section>
+
+  <section>
+    <h2>3. Test an expense</h2>
+    <div class="row muted">Presets:
+      <button data-preset="lunch">$40 lunch</button>
+      <button data-preset="dinner">$95 dinner</button>
+      <button data-preset="wine">$30 wine</button>
+      <button data-preset="amazon">$35 Amazon</button>
+      <button data-preset="laptop">$8,000 laptop</button>
+      <button data-preset="taxi">$40 taxi, no receipt</button>
+      <button data-preset="late">Hotel after grant ends</button>
+    </div>
+    <div class="grid" style="margin-top:10px">
+      <div><label class="f">Amount ($)</label><input id="amount" value="95.00"></div>
+      <div><label class="f">Category</label><select id="category"></select></div>
+      <div><label class="f">Merchant</label><input id="merchant" value="Harbor Grill"></div>
+      <div><label class="f">Date</label><input id="date" type="date" value="2026-06-15"></div>
+      <div><label class="f">Approved by (roles, comma-separated)</label><input id="approvals" placeholder="finance_director"></div>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <label class="check"><input type="checkbox" id="receipt" checked> Receipt attached</label>
+      <label class="check"><input type="checkbox" id="prior"> Prior written approval (grant)</label>
+    </div>
+    <button class="primary" id="checkBtn">Check expense</button>
+    <div id="checkOut"></div>
+  </section>
+</main>
+
+<script>
+const state = { policyId: null, grantId: null };
+const $ = (id) => document.getElementById(id);
+
+function el(tag, props = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === "class") node.className = v;
+    else if (k.startsWith("on")) node.addEventListener(k.slice(2), v);
+    else node.setAttribute(k, v);
+  }
+  for (const c of children.flat()) {
+    if (c === null || c === undefined || c === false) continue;
+    node.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  }
+  return node;
+}
+
+async function api(path, body) {
+  const res = await fetch(path, body === undefined ? {} : {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+  return data;
+}
+
+function money(cents) {
+  const d = Math.trunc(cents / 100).toLocaleString("en-US");
+  const c = String(cents % 100).padStart(2, "0");
+  return c === "00" ? `$${d}` : `$${d}.${c}`;
+}
+
+/** "412.5" -> 41250 using digits only, no floating point. */
+function toCents(input) {
+  const m = /^\s*\$?(\d{1,9})(?:\.(\d{1,2}))?\s*$/.exec(String(input).replace(/,/g, ""));
+  if (!m) return null;
+  return Number(m[1]) * 100 + Number((m[2] || "").padEnd(2, "0"));
+}
+
+function describe(rule) {
+  const p = rule.params, cats = (p.categories || []).join(", ") || "all categories";
+  switch (rule.rule_type) {
+    case "category_prohibition": return `Never allowed: ${(p.prohibited_categories || []).join(", ")}`;
+    case "per_item_cap": return `Cap ${money(p.cap_cents)} per item on ${cats} → ${p.action || "?"}`;
+    case "approval_required": return `${money(p.threshold_cents)}+ on ${cats} needs ${(p.approver_role || "?").replace(/_/g, " ")} → ${p.action || "?"}`;
+    case "merchant_restriction": return `Blocked merchants: ${p.merchants.join(", ")}`;
+    case "receipt_required": return `Receipt needed at ${money(p.threshold_cents)}+ on ${cats}`;
+    case "period_of_performance": return `Only dates ${p.label}`;
+    case "budget_limit": return `Must fit the ${p.budget_line} budget line`;
+    case "threshold_approval": return `${money(p.threshold_cents)}+ ${p.category} needs prior written approval`;
+    default: return rule.rule_type;
+  }
+}
+
+function busy(btn, on) { btn.disabled = on; }
+
+// --- Health ---------------------------------------------------------------
+api("/api/health").then((h) => {
+  $("mode").textContent = h.llm_enabled
+    ? "Mode: Claude reads your rules (API key in use)."
+    : "Mode: offline reader (no API key used). Understands common phrasings only.";
+}).catch(() => { $("mode").textContent = "API not reachable."; });
+
+api("/api/categories").then((cats) => {
+  for (const c of cats) $("category").append(el("option", { value: c }, c));
+  $("category").value = "meals";
+});
+
+// --- Policy ---------------------------------------------------------------
+function renderDraft(d) {
+  const out = $("draftOut");
+  out.replaceChildren();
+  out.append(el("p", { class: "muted" }, `Read by: ${d.drafter}. Rules start as proposed and are not enforced until approved.`));
+
+  for (const r of d.ruleset.rules) {
+    out.append(el("div", { class: "item" },
+      el("span", { class: `pill ${r.status}` }, r.status.toUpperCase()), " ",
+      el("b", {}, r.name), " ", el("span", { class: "quote" }, `“${r.citation.quote}”`),
+      el("div", { class: "muted" }, describe(r)),
+      ...(r.params.clarifications || []).map((c) => el("div", { class: "muted" }, `Answered: ${c.question} → ${c.answer}`)),
+    ));
+  }
+  for (const x of d.rejected) {
+    out.append(el("div", { class: "item err" }, `Not turned into a rule: “${x.candidate.quote}”: ${x.reason}`));
+  }
+  for (const n of d.not_rules) {
+    out.append(el("div", { class: "item muted" }, `Skipped: “${n.quote}”: ${n.why}`));
+  }
+
+  if (d.questions.length) {
+    out.append(el("h3", {}, `Quick questions (${d.questions.length})`));
+    for (const q of d.questions) {
+      out.append(el("div", { class: "q" }, el("b", {}, q.question),
+        ...q.options.map((o) => el("label", {},
+          el("input", { type: "radio", name: q.id, value: o.value }), o.label))));
+    }
+    const btn = el("button", { class: "primary", onclick: () => submitAnswers(d, btn) }, "Save answers");
+    out.append(btn);
+  } else {
+    const btn = el("button", { class: "primary", onclick: () => approvePolicy(btn) }, "Approve all rules");
+    out.append(btn);
+  }
+}
+
+async function submitAnswers(d, btn) {
+  const answers = {};
+  for (const q of d.questions) {
+    const picked = document.querySelector(`input[name="${CSS.escape(q.id)}"]:checked`);
+    if (picked) answers[q.id] = picked.value;
+  }
+  if (!Object.keys(answers).length) return;
+  busy(btn, true);
+  try { renderDraft(await api(`/api/policy/${d.draft_id}/answers`, { answers })); }
+  catch (e) { $("draftOut").append(el("p", { class: "err" }, e.message)); busy(btn, false); }
+}
+
+async function approvePolicy(btn) {
+  busy(btn, true);
+  await api(`/api/rulesets/${state.policyId}/approve`, {});
+  const cards = await api(`/api/rulesets/${state.policyId}/cards`);
+  const out = $("draftOut");
+  out.replaceChildren(el("p", {}, "✔ Approved. These rules are now enforced. Examples below come from the real engine:"));
+  for (const c of cards) {
+    out.append(el("div", { class: "item" },
+      el("span", { class: `pill ${c.rule.status}` }, c.rule.status.toUpperCase()), " ",
+      el("b", {}, c.rule.name), " ", el("span", { class: "quote" }, `“${c.rule.citation.quote}”`),
+      ...c.examples.map((e) => el("div", {}, el("span", { class: `pill ${e.verdict}` }, e.verdict.replace("_", " ")), " ", e.description))));
+  }
+}
+
+$("draftBtn").addEventListener("click", async (ev) => {
+  const btn = ev.currentTarget;
+  busy(btn, true);
+  try {
+    const d = await api("/api/policy/draft", { text: $("policyText").value });
+    state.policyId = d.draft_id;
+    renderDraft(d);
+  } catch (e) {
+    $("draftOut").replaceChildren(el("p", { class: "err" }, e.message));
+  } finally { busy(btn, false); }
+});
+
+// --- Grant ----------------------------------------------------------------
+$("grantBtn").addEventListener("click", async (ev) => {
+  const btn = ev.currentTarget, out = $("grantOut");
+  busy(btn, true);
+  try {
+    const g = await api("/api/compile/demo", {});
+    await api(`/api/rulesets/${g.ruleset.grant_id}/approve`, {});
+    state.grantId = g.ruleset.grant_id;
+    const c = g.coverage;
+    out.replaceChildren(
+      el("p", { class: "muted" }, `Read by: ${g.proposer}. Read all ${c.total} clauses → ${c.rules} rules, ${c.flagged} flagged, ${c.rejected} rejected, ${c.no_rule} no rule. Rules approved.`),
+      ...g.ruleset.rules.map((r) => el("div", { class: "item" }, el("b", {}, r.name), ` (p. ${r.citation.page}) `,
+        el("span", { class: "quote" }, `“${r.citation.quote}”`), el("div", { class: "muted" }, describe(r)))),
+      ...g.rejected.map((x) => el("div", { class: "item err" }, `Rejected: “${x.candidate.quote}”: ${x.reason}`)),
+    );
+  } catch (e) { out.replaceChildren(el("p", { class: "err" }, e.message)); }
+  finally { busy(btn, false); }
+});
+
+// --- Expense --------------------------------------------------------------
+const PRESETS = {
+  lunch: ["40.00", "meals", "Lakeview Cafe", "2026-06-15", "", true],
+  dinner: ["95.00", "meals", "Harbor Grill", "2026-06-15", "", true],
+  wine: ["30.00", "alcohol", "Riverside Wine Bar", "2026-06-15", "", true],
+  amazon: ["35.00", "supplies", "Amazon Marketplace", "2026-06-15", "", true],
+  laptop: ["8000.00", "equipment", "Meridian Computers", "2026-07-01", "", true],
+  taxi: ["40.00", "travel_domestic", "Metro Cab", "2026-06-18", "", false],
+  late: ["412.00", "travel_domestic", "Lakeshore Hotel", "2027-03-01", "", true],
+};
+document.querySelectorAll("[data-preset]").forEach((b) => b.addEventListener("click", () => {
+  const [amt, cat, merch, day, appr, receipt] = PRESETS[b.dataset.preset];
+  $("amount").value = amt; $("category").value = cat; $("merchant").value = merch;
+  $("date").value = day; $("approvals").value = appr; $("receipt").checked = receipt;
+}));
+
+$("checkBtn").addEventListener("click", async () => {
+  const out = $("checkOut");
+  const ids = [state.policyId, state.grantId].filter(Boolean);
+  if (!ids.length) { out.replaceChildren(el("p", { class: "err" }, "Turn your rules into rules and approve them (or load the demo grant) first.")); return; }
+  const cents = toCents($("amount").value);
+  if (cents === null) { out.replaceChildren(el("p", { class: "err" }, "Enter an amount like 95.00")); return; }
+  const expense = {
+    id: "playground", amount_cents: cents, date: $("date").value, merchant: $("merchant").value || "Unknown",
+    category: $("category").value, has_receipt: $("receipt").checked, has_prior_approval: $("prior").checked,
+    approvals: $("approvals").value.split(",").map((s) => s.trim().toLowerCase().replace(/\s+/g, "_")).filter(Boolean),
+  };
+  const budget = { lines: {
+    travel_domestic: { category: "travel_domestic", allocated_cents: 800000, spent_cents: 320000 },
+    equipment: { category: "equipment", allocated_cents: 2000000, spent_cents: 0 },
+  } };
+  try {
+    const res = await api("/api/enforce", { expense, budget_state: budget, ruleset_ids: ids });
+    const flagged = res.traces.filter((t) => t.outcome !== "PASS");
+    out.replaceChildren(
+      el("div", { class: "big" }, el("span", { class: `pill ${res.verdict}` }, res.verdict.replace("_", " ")),
+        ` ${money(cents)} ${expense.category} at ${expense.merchant}`),
+      el("p", { class: "muted" }, `Checked against ${ids.length} rulebook(s), ${res.traces.length} rule(s) applied, in ${res.latency_ms} ms. ${flagged.length ? "" : "Every applicable rule passed."}`),
+      ...res.traces.map((t) => el("div", { class: "item" },
+        el("span", { class: `pill ${t.outcome}` }, t.outcome), " ",
+        el("b", {}, t.source === "grant" ? `Grant, p. ${t.citation.page}` : "Your policy"), `: ${t.reason}`,
+        el("div", { class: "quote muted" }, `“${t.citation.quote}”`),
+        t.fix ? el("div", {}, `What would make it OK: ${t.fix}`) : null)),
+    );
+  } catch (e) { out.replaceChildren(el("p", { class: "err" }, e.message)); }
+});
+</script>
+</body>
+</html>

@@ -21,3 +21,5 @@ One line each: date, decision, why.
 - 2026-11-07 — Rule-card examples run the real engine on synthetic expenses, so examples can never disagree with enforcement.
 - 2026-11-07 — Coverage report classifies every clause (rule / flagged / rejected / no rule); the LLM can flag ambiguous clauses, which are verified like rules but never enforced.
 - 2026-11-07 — Rulebook store is in-memory for now (api/main.py RULESETS/DRAFTS); persistence stays with b/persistence.
+- 2026-11-07 — Offline policy reader (compiler/policy_offline.py) handles common phrasings without an API key; its output goes through the same validation as Claude's. Used when no key is set/enabled or Claude fails, and labelled "offline" in the draft.
+- 2026-11-07 — Bare-bones test page served by the API at /playground (make playground) so the policy -> questions -> approve -> enforce flow can be tried without the web app or a key.
