@@ -1,4 +1,4 @@
-.PHONY: install check lint format typecheck test api web report report-dry report-replay
+.PHONY: install check lint format typecheck test api web report report-dry report-replay demo
 
 install:
 	uv sync
@@ -33,3 +33,6 @@ report-dry:
 
 report-replay:
 	uv run python -m compiler.report --mode replay --replay fixtures/llm_replays/sample_grant.json
+
+demo:
+	uv run python scripts/demo_walkthrough.py
