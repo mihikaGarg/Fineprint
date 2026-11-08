@@ -69,6 +69,8 @@ LLM_TRANSPORT: Transport = anthropic_transport
 RULESETS: dict[str, Ruleset] = {SAMPLE_RULESET.grant_id: SAMPLE_RULESET}
 DRAFTS: dict[str, PolicyDraft] = {}
 SESSIONS: dict[str, PolicySession] = {}
+# Earlier states of each chat, newest last, so "Undo last answer" can step back.
+UNDO: dict[str, list[PolicySession]] = {}
 GRANTS: dict[str, "CompileResponse"] = {}  # compile details (coverage etc.) by grant id
 SAMPLE_IDS = {SAMPLE_RULESET.grant_id}  # bundled fixture, hidden from the app
 # Live budget per grant (read from the agreement or entered), spent on ALLOWED.
@@ -346,6 +348,7 @@ def ruleset_approve(ruleset_id: str, req: ApproveRequest) -> Ruleset:
     session = SESSIONS.get(ruleset_id)
     if session:  # keep the chat's copy in sync so later answers don't undo approvals
         SESSIONS[ruleset_id] = session.model_copy(update={"ruleset": updated})
+        UNDO.pop(ruleset_id, None)  # approving is a commit point; undo can't revert it
     return updated
 
 
@@ -421,6 +424,7 @@ async def chat_start(
         grants.append(ruleset_approve(compiled.ruleset.grant_id, ApproveRequest()))
 
     session = start_session(_draft(pages, name), source, grants)
+    UNDO.pop(session.session_id, None)
     SESSIONS[session.session_id] = session
     RULESETS[session.session_id] = session.ruleset
     return session
@@ -440,10 +444,25 @@ def chat_get(session_id: str) -> PolicySession:
 
 @app.post("/api/chat/{session_id}/reply", response_model=PolicySession)
 def chat_reply(session_id: str, req: ReplyRequest) -> PolicySession:
+    before = _get_session(session_id)
     try:
-        session = reply(_get_session(session_id), req.gap_id, req.value, req.text)
+        session = reply(before, req.gap_id, req.value, req.text)
     except ReplyError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+    UNDO.setdefault(session_id, []).append(before)
+    SESSIONS[session_id] = session
+    RULESETS[session_id] = session.ruleset
+    return session
+
+
+@app.post("/api/chat/{session_id}/undo", response_model=PolicySession)
+def chat_undo(session_id: str) -> PolicySession:
+    """Step back one answer (including any rule it created or changed)."""
+    _get_session(session_id)
+    history = UNDO.get(session_id) or []
+    if not history:
+        raise HTTPException(status_code=400, detail="Nothing to undo")
+    session = history.pop()
     SESSIONS[session_id] = session
     RULESETS[session_id] = session.ruleset
     return session
@@ -704,6 +723,7 @@ def reset() -> dict[str, str]:
         del RULESETS[rid]
     DRAFTS.clear()
     SESSIONS.clear()
+    UNDO.clear()
     GRANTS.clear()
     EXPENSE_LOG.clear()
     BUDGETS.clear()

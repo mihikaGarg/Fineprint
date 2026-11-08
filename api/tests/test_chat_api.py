@@ -105,3 +105,21 @@ def test_full_app_flow_state_budget_and_reset() -> None:
     state = client.get("/api/state").json()
     assert state["rulesets"] == [] and state["expenses_checked"] == 0
     assert state["budgets"] == []
+
+
+def test_undo_last_answer_steps_back_one_answer() -> None:
+    s = client.post("/api/chat/start", data={"text": "Meals up to $75. No alcohol."}).json()
+    sid = s["session_id"]
+    assert client.post(f"/api/chat/{sid}/undo").status_code == 400  # nothing yet
+    gaps: list[dict[str, Any]] = s["gaps"]
+    gap = next(g for g in gaps if not g["resolved"])
+    after = client.post(
+        f"/api/chat/{sid}/reply", json={"gap_id": gap["id"], "value": "block"}
+    ).json()
+    meal = next(r for r in after["ruleset"]["rules"] if r["rule_type"] == "per_item_cap")
+    assert meal["params"]["action"] == "block"
+    back = client.post(f"/api/chat/{sid}/undo").json()
+    assert len(back["messages"]) == len(s["messages"])
+    meal = next(r for r in back["ruleset"]["rules"] if r["rule_type"] == "per_item_cap")
+    assert meal["params"]["action"] is None
+    assert client.get(f"/api/rulesets/{sid}").json()["rules"] == back["ruleset"]["rules"]

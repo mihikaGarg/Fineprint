@@ -68,7 +68,6 @@ def test_choosing_review_applies_it_to_the_category_as_review_only() -> None:
     assert rule.params["action"] == "review"
     assert "not just what the policy names" in rule.params["clarifications"][-1]["question"]
 
-
     trace = evaluate_rule(
         rule,
         Expense(

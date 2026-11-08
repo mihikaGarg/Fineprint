@@ -124,7 +124,7 @@ def test_answers_fill_fields_and_are_recorded() -> None:
     assert answered.questions == []
     assert r.params["action"] == "review"
     assert r.params["clarifications"] == [
-        {"question": q.question, "answer": "Allow but send for review"}
+        {"question": q.question, "answer": "Allow it, but flag it for someone to check"}
     ]
 
 

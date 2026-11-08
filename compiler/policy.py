@@ -25,6 +25,7 @@ from compiler.citation import verify_citation
 from compiler.narrow import narrower_scope
 from compiler.propose import parse_dollars_to_cents
 from contracts.models import KNOWN_CATEGORIES, Ruleset, SpendRule
+from enforce.rules import format_cents
 from shared.llm import Effort, LLMError, LLMRequest, Transport, anthropic_transport, complete_json
 
 POLICY_RULE_TYPES = (
@@ -49,10 +50,6 @@ RULE_NAMES = {
 }
 
 FIELD_LABELS = {"action": "What should happen?", "categories": "Which kind of expense?"}
-ACTION_OPTIONS = [
-    {"label": "Block it", "value": "block"},
-    {"label": "Allow but send for review", "value": "review"},
-]
 
 
 class Option(BaseModel):
@@ -66,6 +63,57 @@ class Question(BaseModel):
     field: str
     question: str
     options: list[Option]
+
+
+# How to talk about one expense in a category, for questions ("when a meal costs...").
+ONE_EXPENSE = {
+    "meals": "a meal",
+    "lodging": "a hotel charge",
+    "ground_transport": "a taxi or rideshare",
+    "airfare": "a flight",
+    "first_class_airfare": "a first-class flight",
+    "entertainment": "an entertainment expense",
+    "gifts": "a gift",
+    "equipment": "an equipment purchase",
+    "software": "a software purchase",
+    "supplies": "a supplies purchase",
+    "travel_domestic": "a travel expense",
+    "travel_foreign": "a foreign travel expense",
+}
+
+
+def role_label(role: str) -> str:
+    """finance_director -> finance director; cfo -> CFO."""
+    return role.upper() if len(role) <= 3 else role.replace("_", " ")
+
+
+def action_question(rule_type: str, quote: str, params: dict[str, Any]) -> tuple[str, list[Option]]:
+    """A plain question about what happens when a rule is broken, with plain choices."""
+    cats: list[str] = params.get("categories") or []
+    one = ONE_EXPENSE.get(cats[0], "an expense") if len(cats) == 1 else "an expense"
+    if rule_type == "per_item_cap":
+        amount = format_cents(int(params["cap_cents"]))
+        return (
+            f'"{quote}" What should happen when {one} costs more than {amount}?',
+            [
+                Option(label="Don't allow it", value="block"),
+                Option(label="Allow it, but flag it for someone to check", value="review"),
+            ],
+        )
+    role = role_label(str(params.get("approver_role") or "the right person's"))
+    threshold = int(params.get("threshold_cents") or 0)
+    situation = (
+        f"someone spends {format_cents(threshold)} or more without {role} approval"
+        if threshold
+        else f"{one} doesn't have {role} approval"
+    )
+    return (
+        f'"{quote}" What should happen if {situation}?',
+        [
+            Option(label=f"Don't allow it without {role} approval", value="block"),
+            Option(label=f"Allow it, but flag it until {role} approval is given", value="review"),
+        ],
+    )
 
 
 class PolicyDraft(BaseModel):
@@ -285,14 +333,15 @@ def _build_rule(
 
     # Every required field must have a value or an open question.
     if rule_type in ("per_item_cap", "approval_required") and action is None:
+        prompt, options = action_question(rule_type, quote, params)
         questions.setdefault(
             "action",
             Question(
                 id=f"{rule_id}:action",
                 rule_id=rule_id,
                 field="action",
-                question=f'"{quote}": what should happen when this is broken?',
-                options=[Option(**o) for o in ACTION_OPTIONS],
+                question=prompt,
+                options=options,
             ),
         )
     # Drop questions for fields that already have a value.
