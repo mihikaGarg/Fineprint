@@ -39,8 +39,8 @@ def test_questions_name_the_situation() -> None:
     s = _session({1: "Meals up to $75 per person."})
     assert "What should happen when a meal costs more than $75?" in s.messages[-1].text
     assert [o.label for o in s.gaps[0].options] == [
-        "Don't allow it",
-        "Allow it, but flag it for someone to check",
+        "Reject it",
+        "Send it to someone to decide",
     ]
 
 

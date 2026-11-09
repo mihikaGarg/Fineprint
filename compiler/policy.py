@@ -96,8 +96,8 @@ def action_question(rule_type: str, quote: str, params: dict[str, Any]) -> tuple
         return (
             f'"{quote}" What should happen when {one} costs more than {amount}?',
             [
-                Option(label="Don't allow it", value="block"),
-                Option(label="Allow it, but flag it for someone to check", value="review"),
+                Option(label="Reject it", value="block"),
+                Option(label="Send it to someone to decide", value="review"),
             ],
         )
     role = role_label(str(params.get("approver_role") or "the right person's"))
@@ -110,8 +110,8 @@ def action_question(rule_type: str, quote: str, params: dict[str, Any]) -> tuple
     return (
         f'"{quote}" What should happen if {situation}?',
         [
-            Option(label=f"Don't allow it without {role} approval", value="block"),
-            Option(label=f"Allow it, but flag it until {role} approval is given", value="review"),
+            Option(label=f"Reject it without {role} approval", value="block"),
+            Option(label="Send it to someone to decide", value="review"),
         ],
     )
 

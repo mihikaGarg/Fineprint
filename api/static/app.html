@@ -328,7 +328,7 @@ async function viewPolicy(v) {
     const last = s.messages[s.messages.length - 1];
     const open = last && last.role === "assistant" && last.gap_id && !s.gaps.find((g) => g.id === last.gap_id)?.resolved;
     if (open && last.options.length) {
-      log.append(el("div", { class: "opts" }, last.options.map((o) => el("button", { class: o.value === "approve" ? "primary" : "", onclick: () => reply({ gap_id: last.gap_id, value: o.value }, o.label) }, o.label))));
+      log.append(el("div", { class: "opts" }, last.options.map((o) => el("button", { class: o.value === "approve" || o.suggested ? "primary" : "", onclick: () => reply({ gap_id: last.gap_id, value: o.value }, o.label) }, o.label))));
       log.scrollTop = log.scrollHeight;
     }
     setComposer(true, open ? (last.free_text_hint || "Type a reply…") : "Type a new rule…");

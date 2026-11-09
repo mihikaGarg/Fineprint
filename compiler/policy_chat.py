@@ -30,6 +30,7 @@ from compiler.policy import (
 )
 from compiler.policy_offline import CATEGORY_WORDS, read_policy
 from compiler.propose import parse_dollars_to_cents
+from compiler.recommend import Suggestion, suggest_action, suggest_exception
 from compiler.sentences import split_sentences
 from contracts.models import Ruleset, SpendRule
 from enforce.rules import format_cents
@@ -76,12 +77,12 @@ GROUP_NOUNS = {
 }
 GROUP_OPTIONS = {
     "approval_required": [
-        ("Don't allow it without the required approval", "block"),
-        ("Allow it, but flag it until it's approved", "review"),
+        ("Reject it until it's approved", "block"),
+        ("Send it to someone to decide", "review"),
     ],
     "per_item_cap": [
-        ("Don't allow anything over the limit", "block"),
-        ("Allow it, but flag it for someone to check", "review"),
+        ("Reject anything over the limit", "block"),
+        ("Send it to someone to decide", "review"),
     ],
 }
 OUTCOME = {"block": "not allowed", "review": "flagged for review"}
@@ -90,6 +91,8 @@ OUTCOME = {"block": "not allowed", "review": "flagged for review"}
 class ChatOption(BaseModel):
     label: str
     value: str
+    # Suggested from the policy's own wording; shown first and highlighted.
+    suggested: bool = False
 
 
 class Gap(BaseModel):
@@ -275,11 +278,10 @@ def find_gaps(draft: PolicyDraft, grants: list[Ruleset]) -> list[Gap]:
                         "applies). What should happen to these expenses?"
                     ),
                     options=[
+                        ChatOption(label="Send each one to someone to check", value="review"),
                         ChatOption(
-                            label="Flag each one so a person checks the exception", value="review"
-                        ),
-                        ChatOption(
-                            label="Never allow them, even when the exception applies", value="block"
+                            label="Always reject them, even when the exception applies",
+                            value="block",
                         ),
                     ],
                     rule_id=r.id,
@@ -408,8 +410,8 @@ def find_gaps(draft: PolicyDraft, grants: list[Ruleset]) -> list[Gap]:
                 kind="missing",
                 prompt="Your policy doesn't mention alcohol. How should alcohol be handled?",
                 options=[
-                    ChatOption(label="Don't allow alcohol", value="block"),
-                    ChatOption(label="Allow it, but flag it for review", value="review"),
+                    ChatOption(label="Reject alcohol", value="block"),
+                    ChatOption(label="Send it to someone to decide", value="review"),
                     ChatOption(label="Allow it", value="skip"),
                 ],
             )
@@ -446,7 +448,73 @@ def find_gaps(draft: PolicyDraft, grants: list[Ruleset]) -> list[Gap]:
                         options=[ChatOption(label="Got it", value="ok")],
                     )
                 )
+    for gap in gaps:
+        _suggest(gap, rules, draft.pages)
     return gaps
+
+
+def _suggest(gap: Gap, rules: list[SpendRule], pages: dict[int, str]) -> None:
+    """Put the answer the policy's own wording points to first, and say why."""
+    suggestion: Suggestion | None = None
+    if gap.kind == "exception":
+        suggestion = suggest_exception()
+    elif gap.kind == "question" and gap.field == "action":
+        ids = set(gap.rule_ids or [gap.rule_id])
+        about = [r for r in rules if r.id in ids]
+        if about:
+            quotes = [(r.citation.page, r.citation.quote) for r in about]
+            others = frozenset(r.citation.quote for r in rules)
+            suggestion = suggest_action(about[0].rule_type, quotes, pages, others)
+    if suggestion is None:
+        return
+    pick = next((o for o in gap.options if o.value == suggestion.value), None)
+    if pick is None:
+        return
+    pick.suggested = True
+    gap.options = [pick, *[o for o in gap.options if o is not pick]]
+    gap.prompt = f"{gap.prompt}\nSuggested: {pick.label}. {suggestion.reason}"
+
+
+NEGATIVE_WORDS = {
+    "no", "not", "don't", "dont", "never", "reject", "rejected", "block", "deny", "refuse",
+    "decline", "stop", "disallow", "ban",
+}  # fmt: skip
+REVIEW_WORDS = {
+    "allow", "flag", "review", "check", "decide", "send", "let", "accept", "someone", "person",
+    "manager", "human", "ok", "okay",
+}  # fmt: skip
+SUGGESTED_WORDS = {"suggested", "suggestion", "recommended", "you", "whatever", "default", "sure"}
+STOP_WORDS = {"it", "the", "a", "an", "to", "for", "of", "and", "or", "i", "we", "them", "that"}
+
+
+def match_option(gap: Gap, text: str) -> ChatOption | None:
+    """The choice a short typed reply means ("allow it", "reject", "you pick"), if clear."""
+    words = re.findall(r"[a-z$0-9,']+", text.lower())
+    if not words or len(words) > 10:
+        return None
+    by_value = {o.value: o for o in gap.options}
+    if SUGGESTED_WORDS & set(words) and not NEGATIVE_WORDS & set(words):
+        suggested = next((o for o in gap.options if o.suggested), None)
+        if suggested is not None:
+            return suggested
+    if {"block", "review"} <= by_value.keys():
+        if NEGATIVE_WORDS & set(words):
+            return by_value["block"]
+        if REVIEW_WORDS & set(words):
+            return by_value["review"]
+    if words[0] in ("yes", "yeah", "yep", "y") and len(gap.options) == 2:
+        return gap.options[0]
+    if words[0] in ("skip", "none") or words == ["no"]:
+        return by_value.get("skip")
+    # Otherwise the option whose wording overlaps most, if exactly one does.
+    content = set(words) - STOP_WORDS
+    scores = [
+        (len(content & (set(re.findall(r"[a-z$0-9,']+", o.label.lower())) - STOP_WORDS)), o)
+        for o in gap.options
+    ]
+    best = max((n for n, _ in scores), default=0)
+    winners = [o for n, o in scores if n == best]
+    return winners[0] if best > 0 and len(winners) == 1 else None
 
 
 # --- Session ------------------------------------------------------------------
@@ -622,6 +690,8 @@ def _add_rule(s: PolicySession, item: dict[str, Any]) -> tuple[SpendRule, list[G
         )
         for q in questions
     ]
+    for gap in new_gaps:
+        _suggest(gap, s.ruleset.rules, s.pages)
     return rule, new_gaps
 
 
@@ -672,13 +742,21 @@ def reply(
         if cents is not None:
             value = str(cents)
 
+    typed_answer = False
+    if gap is not None and value is None and text and (choice := match_option(gap, text)):
+        value, typed_answer = choice.value, True
+
     if gap is not None and value is not None:
         option = next((o for o in gap.options if o.value == value), None)
         if option is None and not (gap.kind in ("vague", "missing") and value.isdigit()):
             raise ReplyError(f"'{value}' is not an option for this question")
         shown = option.label if option else format_cents(int(value))
-        s.messages.append(ChatMessage(role="user", text=shown, gap_id=gap.id))
+        s.messages.append(
+            ChatMessage(role="user", text=text if typed_answer else shown, gap_id=gap.id)
+        )
         confirmation = _resolve(s, gap, value, shown)
+        if typed_answer:
+            confirmation = f'I took that as "{shown}". {confirmation}'
         gap.resolved = True
         s.messages.append(ChatMessage(role="assistant", text=confirmation))
         if gap.kind != "final":
@@ -722,6 +800,16 @@ def reply(
             s.messages.append(
                 ChatMessage(role="assistant", text="Added: " + "; ".join(added) + ".")
             )
+    elif gap is not None:
+        s.messages.append(
+            ChatMessage(
+                role="assistant",
+                text=(
+                    "I didn't catch which choice you meant. Tap one of the choices, or type "
+                    'a new rule like "Meals up to $75".'
+                ),
+            )
+        )
     else:
         s.messages.append(
             ChatMessage(
