@@ -46,9 +46,13 @@ def test_unrelated_sentences_are_not_evidence() -> None:
 
 def test_sample_policy_cites_its_violations_clause() -> None:
     pages = {p.page_number: p.raw_text for p in extract_pdf_pages(POLICY_PDF.read_bytes())}
-    gap = _open(_session(pages))
+    s = _session(pages)
+    gap = _open(s)
     assert gap.options[0].suggested and gap.options[0].value == "block"
-    assert "denial of reimbursement" in gap.prompt and "(p. 5)" in gap.prompt
+    assert "denial of reimbursement" in s.messages[-1].text and "(p. 5)" in s.messages[-1].text
+    # The next question with the same reason doesn't repeat it.
+    s = reply(s, gap.id, "block", None)
+    assert "same reason as before" in s.messages[-1].text
 
 
 def test_exceptions_suggest_a_person_checks() -> None:
@@ -62,7 +66,9 @@ def test_typed_reply_answers_the_open_question() -> None:
     gap = _open(s)
     s = reply(s, gap.id, None, "allow it")
     assert s.messages[-3].text == "allow it"
-    assert s.messages[-2].text.startswith('I took that as "Send it to someone to decide"')
+    assert s.messages[-2].text.startswith(
+        'I took that as "Send meals over $75 to the finance team to approve"'
+    )
     assert s.ruleset.rules[0].params["action"] == "review"
 
 
@@ -80,3 +86,26 @@ def test_unclear_reply_asks_again_without_calling_it_a_rule() -> None:
     s = reply(s, gap.id, None, "hmm")
     assert "didn't catch which choice" in s.messages[-2].text
     assert _open(s).id == gap.id
+
+
+def test_choices_name_the_rule_and_reviewer() -> None:
+    s = _session({1: "Expenses of $1,000 or more need manager approval. Meals up to $75."})
+    meal = next(g for g in s.gaps if g.field == "action" and "meal" in g.prompt)
+    assert [o.label for o in meal.options] == [
+        "Reject any meal over $75",
+        "Send meals over $75 to the manager to approve",
+    ]
+    s = reply(s, meal.id, "review", None)
+    assert "Meals over $75: sent to the manager to approve" in s.messages[-2].text
+
+
+def test_same_for_the_rest_answers_every_sibling() -> None:
+    s = _session(
+        {1: "Expenses of $1,000 or more need manager approval. Gifts need the CEO's approval."}
+    )
+    gap = _open(s)
+    rest = next(o for o in gap.options if o.value.endswith("+rest"))
+    assert rest.label == "Same for both approval rules (reject)"
+    s = reply(s, gap.id, rest.value, None)
+    approvals = [r for r in s.ruleset.rules if r.rule_type == "approval_required"]
+    assert {r.params["action"] for r in approvals} == {"block"}

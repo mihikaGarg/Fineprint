@@ -83,6 +83,17 @@ def _noun(rule: SpendRule, category: str | None = None) -> str:
     return NOUNS.get(key or "", "expense")
 
 
+# A believable price for one item, for examples with no amount in the rule.
+TYPICAL_CENTS = {
+    "first_class_airfare": 240_000,
+    "airfare": 45_000,
+    "software": 60_000,
+    "equipment": 150_000,
+    "lodging": 25_000,
+    "gifts": 8_000,
+}
+
+
 def _cases(rule: SpendRule) -> list[tuple[str, Expense]]:
     p = rule.params
     t = rule.rule_type
@@ -96,9 +107,11 @@ def _cases(rule: SpendRule) -> list[tuple[str, Expense]]:
             (f"{_format_cents(over)} {noun}", _expense(rule, over)),
         ]
     if t in ("approval_required", "threshold_approval"):
-        threshold = max(int(p.get("threshold_cents", 0)), 100)
+        cats: list[str] = p.get("categories") or []
+        typical = TYPICAL_CENTS.get(cats[0] if cats else "", 50_000)
+        threshold = int(p.get("threshold_cents", 0))
         role = p.get("approver_role")
-        over = threshold * 6 // 5
+        over = threshold * 6 // 5 if threshold else typical
         approved = (
             _expense(rule, over, approvals=[role])
             if role
@@ -109,15 +122,19 @@ def _cases(rule: SpendRule) -> list[tuple[str, Expense]]:
             (f"{_format_cents(over)} {noun}, no approval", _expense(rule, over)),
             (f"{_format_cents(over)} {noun}, with {who} approval", approved),
         ]
-        if int(p.get("threshold_cents", 0)) > 0:
+        if threshold > 0:
             under = threshold * 9 // 10
             cases.insert(0, (f"{_format_cents(under)} {noun}, no approval", _expense(rule, under)))
         return cases
     if t == "category_prohibition":
         banned = p.get("prohibited_categories") or ["alcohol"]
         allowed = next(c for c in ("supplies", "software", "other") if c not in banned)
+        price = TYPICAL_CENTS.get(banned[0], 5_000)
         return [
-            (f"$50 {_noun(rule, banned[0])}", _expense(rule, 5_000, category=banned[0])),
+            (
+                f"{_format_cents(price)} {_noun(rule, banned[0])}",
+                _expense(rule, price, category=banned[0]),
+            ),
             (f"$50 {_noun(rule, allowed)}", _expense(rule, 5_000, category=allowed)),
         ]
     if t == "merchant_restriction":
@@ -175,3 +192,6 @@ def examples_for(rule: SpendRule) -> list[RuleExample]:
             )
         )
     return out
+
+
+noun_for = _noun

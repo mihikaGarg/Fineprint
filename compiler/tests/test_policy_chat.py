@@ -45,9 +45,10 @@ def test_enterprise_policy_is_read_with_every_approval_tier() -> None:
         and kinds.count("vague") == 2
         and kinds.count("unsupported") == 1
     )
-    # Same-type "block or review?" questions are grouped into one.
-    grouped = next(g for g in s.gaps if g.id == "group:approval_required:action")
-    assert len(grouped.rule_ids) == 5
+    # Each approval rule gets its own question, with choices naming its approver.
+    labels = [o.label for g in s.gaps if g.field == "action" for o in g.options]
+    assert "Send them to the CFO to approve or reject" in labels
+    assert "Reject gifts of $100 or more without provost sign-off" in labels
 
 
 def test_full_conversation_ends_with_approved_cited_rules() -> None:

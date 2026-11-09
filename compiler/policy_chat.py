@@ -23,7 +23,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from compiler.citation import verify_citation
-from compiler.examples import examples_for
+from compiler.examples import examples_for, noun_for
 from compiler.policy import (
     PolicyDraft,
     _build_rule,  # pyright: ignore[reportPrivateUsage]
@@ -75,16 +75,6 @@ GROUP_NOUNS = {
     "approval_required": ("approval rules", "when someone spends without the required approval"),
     "per_item_cap": ("spending limits", "when someone goes over them"),
 }
-GROUP_OPTIONS = {
-    "approval_required": [
-        ("Reject it until it's approved", "block"),
-        ("Send it to someone to decide", "review"),
-    ],
-    "per_item_cap": [
-        ("Reject anything over the limit", "block"),
-        ("Send it to someone to decide", "review"),
-    ],
-}
 OUTCOME = {"block": "not allowed", "review": "flagged for review"}
 
 
@@ -108,8 +98,10 @@ class Gap(BaseModel):
     page: int | None = None
     quote: str | None = None
     category: str | None = None
-    # Answered automatically (e.g. already covered); not counted in "(2 of 6)".
+    # Answered automatically (e.g. already covered); counts as done in "(2 of 6)".
     auto: bool = False
+    # Why the highlighted choice is suggested (shown once per reason).
+    suggest_reason: str | None = None
     # For "narrow" gaps: the held-back rule, applied to the whole category if the user agrees.
     rule: SpendRule | None = None
     resolved: bool = False
@@ -157,10 +149,18 @@ def describe(rule: SpendRule) -> str:
     categories: list[str] = p.get("categories") or []
     cats = " and ".join(label(c) for c in categories) or "any expense"
     outcome = OUTCOME.get(p.get("action") or "", "you haven't said what happens yet")
+    if p.get("action") == "review" and p.get("reviewer"):
+        outcome = f"sent to {_the(str(p['reviewer']))} to approve"
     t = rule.rule_type
     if t == "category_prohibition":
         what = " and ".join(label(c) for c in p.get("prohibited_categories", []))
-        allowed = "not allowed" if p.get("action", "block") == "block" else "only after review"
+        allowed = (
+            "not allowed"
+            if p.get("action", "block") == "block"
+            else f"only after {_the(str(p['reviewer']))} checks the exception"
+            if p.get("reviewer")
+            else "only after review"
+        )
         line = f"{what}: {allowed}"
     elif t == "per_item_cap":
         line = f"{cats} over {format_cents(p['cap_cents'])}: {outcome}"
@@ -168,7 +168,7 @@ def describe(rule: SpendRule) -> str:
         role = role_label(str(p.get("approver_role") or "?"))
         threshold = int(p.get("threshold_cents", 0))
         when = f" from {format_cents(threshold)}" if threshold else ""
-        verb = "need" if categories else "needs"
+        verb = "need" if cats.endswith("s") else "needs"
         line = f"{cats}{when} {verb} {role} approval; without it, {outcome}"
     elif t == "merchant_restriction":
         line = f"purchases from {', '.join(p['merchants'])}: not allowed"
@@ -185,7 +185,14 @@ def example_line(rule: SpendRule) -> str:
     """A concrete example from the real engine, e.g. "$90 expense → flagged for review"."""
     for ex in examples_for(rule):
         if ex.verdict != "ALLOWED":
-            outcome = "not allowed" if ex.verdict == "BLOCKED" else "flagged for review"
+            reviewer = rule.params.get("reviewer")
+            outcome = (
+                "not allowed"
+                if ex.verdict == "BLOCKED"
+                else f"sent to {_the(str(reviewer))}"
+                if reviewer
+                else "flagged for review"
+            )
             return f" For example: {ex.description} → {outcome}."
     return ""
 
@@ -223,13 +230,10 @@ def find_gaps(draft: PolicyDraft, grants: list[Ruleset]) -> list[Gap]:
     cited = {(r.citation.page, r.citation.quote) for r in rules}
     rejected_quotes = {str(x["candidate"].get("quote", "")).strip() for x in draft.rejected}
 
-    by_id = {r.id: r for r in rules}
-    groups: dict[str, list[Any]] = {}
-    for q in draft.questions:
-        rule_type = by_id[q.rule_id].rule_type
-        if q.field == "action" and rule_type in GROUP_NOUNS:
-            groups.setdefault(rule_type, []).append(q)
-            continue
+    # One question per rule, so each gets choices in its own terms; "what happens
+    # when it's broken" questions come first.
+    questions = sorted(draft.questions, key=lambda q: q.field != "action")
+    for q in questions:
         gaps.append(
             Gap(
                 id=f"q:{q.id}",
@@ -239,31 +243,6 @@ def find_gaps(draft: PolicyDraft, grants: list[Ruleset]) -> list[Gap]:
                 rule_id=q.rule_id,
                 field=q.field,
             )
-        )
-    for rule_type, qs in groups.items():
-        noun, when = GROUP_NOUNS[rule_type]
-        quotes = "\n".join(f'• "{by_id[q.rule_id].citation.quote}"' for q in qs)
-        prompt = (
-            f"Your {len(qs)} {noun} don't say what should happen {when}:\n{quotes}\n"
-            "What should happen?"
-            if len(qs) > 1
-            else qs[0].question
-        )
-        options = (
-            [ChatOption(label=lbl, value=v) for lbl, v in GROUP_OPTIONS[rule_type]]
-            if len(qs) > 1
-            else [ChatOption(label=o.label, value=o.value) for o in qs[0].options]
-        )
-        gaps.insert(
-            0,
-            Gap(
-                id=f"group:{rule_type}:action",
-                kind="question",
-                prompt=prompt,
-                options=options,
-                rule_ids=[q.rule_id for q in qs],
-                field="action",
-            ),
         )
 
     for r in rules:
@@ -453,8 +432,75 @@ def find_gaps(draft: PolicyDraft, grants: list[Ruleset]) -> list[Gap]:
     return gaps
 
 
+def _the(role: str) -> str:
+    """'manager' -> 'the manager'; 'IT' stays 'IT'."""
+    return role if len(role) <= 2 or role.lower() in ("finance", "procurement") else f"the {role}"
+
+
+def _plural_noun(noun: str) -> str:
+    return noun if noun.endswith("s") else f"{noun}s"
+
+
+def reviewer_for(rules: list[SpendRule]) -> str:
+    """Who checks flagged expenses: the policy's lowest company-wide approver, else finance."""
+    tiers = [
+        (int(r.params.get("threshold_cents", 0)), str(r.params["approver_role"]))
+        for r in rules
+        if r.rule_type == "approval_required"
+        and r.params.get("approver_role")
+        and not r.params.get("categories")
+    ]
+    return role_label(min(tiers)[1]) if tiers else "finance team"
+
+
+EXCEPTION_RE = re.compile(r"\b(unless|except|other than)\b\s+(.+?)[.;!]?$", re.IGNORECASE)
+
+
+def action_options(rule: SpendRule, reviewer: str) -> list[ChatOption] | None:
+    """The two outcomes, in this rule's own terms (its item, amount, approver, exception)."""
+    p = rule.params
+    noun = noun_for(rule)
+    many = _plural_noun(noun)
+    if rule.rule_type == "per_item_cap":
+        cap = format_cents(int(p["cap_cents"]))
+        return [
+            ChatOption(label=f"Reject any {noun} over {cap}", value="block"),
+            ChatOption(
+                label=f"Send {many} over {cap} to {_the(reviewer)} to approve", value="review"
+            ),
+        ]
+    if rule.rule_type == "approval_required":
+        role = role_label(str(p.get("approver_role") or reviewer))
+        threshold = int(p.get("threshold_cents") or 0)
+        scope = f"{many} of {format_cents(threshold)} or more" if threshold else many
+        scope = scope[:1].upper() + scope[1:]
+        return [
+            ChatOption(label=f"Reject {scope.lower()} without {role} sign-off", value="block"),
+            ChatOption(label=f"Send them to {_the(role)} to approve or reject", value="review"),
+        ]
+    if rule.rule_type == "category_prohibition":
+        m = EXCEPTION_RE.search(rule.citation.quote)
+        if not m:
+            return None
+        word, rest = m.group(1).lower(), m.group(2).strip()
+        confirm = rest if word == "unless" else f"it was {rest}"
+        even = f"when {rest}" if word == "unless" else rest
+        return [
+            ChatOption(
+                label=f"Send each {noun} to {_the(reviewer)} to confirm {confirm}", value="review"
+            ),
+            ChatOption(label=f"Reject all {many}, even {even}", value="block"),
+        ]
+    return None
+
+
 def _suggest(gap: Gap, rules: list[SpendRule], pages: dict[int, str]) -> None:
-    """Put the answer the policy's own wording points to first, and say why."""
+    """Tailor the choices to the rule, put the one the policy points to first, say why."""
+    target = next((r for r in rules if r.id == gap.rule_id), None)
+    if target is not None and (gap.kind == "exception" or gap.field == "action"):
+        options = action_options(target, reviewer_for(rules))
+        if options:
+            gap.options = options
     suggestion: Suggestion | None = None
     if gap.kind == "exception":
         suggestion = suggest_exception()
@@ -472,7 +518,7 @@ def _suggest(gap: Gap, rules: list[SpendRule], pages: dict[int, str]) -> None:
         return
     pick.suggested = True
     gap.options = [pick, *[o for o in gap.options if o is not pick]]
-    gap.prompt = f"{gap.prompt}\nSuggested: {pick.label}. {suggestion.reason}"
+    gap.suggest_reason = suggestion.reason
 
 
 NEGATIVE_WORDS = {
@@ -649,17 +695,40 @@ def _ask_next(s: PolicySession) -> None:
             options=[ChatOption(label="Approve all rules", value="approve")],
         )
         s.gaps.append(gap)
+    # "Reject, and do the same for the other 4 approval rules" keeps long policies fast.
+    gap.options = [o for o in gap.options if not o.value.endswith("+rest")]
+    siblings = _siblings(s, gap)
+    suggested = next((o for o in gap.options if o.suggested), None)
+    if siblings and suggested is not None and gap.rule_id:
+        kind = next(r.rule_type for r in s.ruleset.rules if r.id == gap.rule_id)
+        noun = GROUP_NOUNS.get(kind, ("rules", ""))[0]
+        verb = "reject" if suggested.value == "block" else "send to a reviewer"
+        count = "both" if len(siblings) == 1 else f"all {len(siblings) + 1}"
+        gap.options.append(
+            ChatOption(
+                label=f"Same for {count} {noun} ({verb})",
+                value=f"{suggested.value}+rest",
+            )
+        )
     # "(2 of 6)" so people know how much is left.
-    counted = [g for g in s.gaps if g.kind != "final" and not g.auto]
+    counted = [g for g in s.gaps if g.kind != "final"]
     progress = (
         f"({sum(g.resolved for g in counted) + 1} of {len(counted)}) "
         if gap.kind != "final" and len(counted) > 1
         else ""
     )
+    why = ""
+    if gap.suggest_reason:
+        said = any(gap.suggest_reason in m.text for m in s.messages if m.role == "assistant")
+        why = (
+            "\nI'd go with the highlighted choice, for the same reason as before."
+            if said
+            else f"\nI'd go with the highlighted choice. {gap.suggest_reason}"
+        )
     s.messages.append(
         ChatMessage(
             role="assistant",
-            text=progress + gap.prompt,
+            text=progress + gap.prompt + why,
             gap_id=gap.id,
             options=gap.options,
             free_text_hint=gap.free_text_hint or "Or type a new rule",
@@ -754,7 +823,19 @@ def reply(
         s.messages.append(
             ChatMessage(role="user", text=text if typed_answer else shown, gap_id=gap.id)
         )
-        confirmation = _resolve(s, gap, value, shown)
+        if value.endswith("+rest"):
+            base = value.removesuffix("+rest")
+            group = [gap, *_siblings(s, gap)]
+            lines: list[str] = []
+            for g in group:
+                pick = next(o for o in g.options if o.value == base)
+                _resolve(s, g, base, pick.label)
+                g.resolved = True
+                rule = next(r for r in s.ruleset.rules if r.id == g.rule_id)
+                lines.append(f"• {describe(rule)}")
+            confirmation = "Got it:\n" + "\n".join(lines)
+        else:
+            confirmation = _resolve(s, gap, value, shown)
         if typed_answer:
             confirmation = f'I took that as "{shown}". {confirmation}'
         gap.resolved = True
@@ -825,6 +906,30 @@ def reply(
     return s
 
 
+def _reviewer_of(s: PolicySession, rule: SpendRule) -> str:
+    """An approval rule is reviewed by its approver; anything else by the policy's reviewer."""
+    if rule.rule_type == "approval_required" and rule.params.get("approver_role"):
+        return role_label(str(rule.params["approver_role"]))
+    return reviewer_for(s.ruleset.rules)
+
+
+def _siblings(s: PolicySession, gap: Gap) -> list[Gap]:
+    """Other open "what happens when it's broken" questions about the same kind of rule."""
+    if gap.field != "action" or gap.rule_id is None:
+        return []
+    by_id = {r.id: r for r in s.ruleset.rules}
+    kind = by_id[gap.rule_id].rule_type
+    return [
+        g
+        for g in s.gaps
+        if g is not gap
+        and not g.resolved
+        and g.field == "action"
+        and g.rule_id in by_id
+        and by_id[g.rule_id].rule_type == kind
+    ]
+
+
 def _resolve(s: PolicySession, gap: Gap, value: str, shown: str) -> str:
     note = {"question": gap.prompt, "answer": shown}
 
@@ -846,11 +951,18 @@ def _resolve(s: PolicySession, gap: Gap, value: str, shown: str) -> str:
                 else "categories"
             )
             new = [value]
-        updated_rule = _update_rule(s, gap.rule_id, {key: new}, note)
+        changes: dict[str, Any] = {key: new}
+        if gap.field == "action" and value == "review":
+            changes["reviewer"] = _reviewer_of(s, rule)
+        updated_rule = _update_rule(s, gap.rule_id, changes, note)
         return f"Got it: {describe(updated_rule)}.{example_line(updated_rule)}"
 
     if gap.kind == "exception" and gap.rule_id:
-        updated_rule = _update_rule(s, gap.rule_id, {"action": value}, note)
+        rule = next(r for r in s.ruleset.rules if r.id == gap.rule_id)
+        changes = {"action": value}
+        if value == "review":
+            changes["reviewer"] = _reviewer_of(s, rule)
+        updated_rule = _update_rule(s, gap.rule_id, changes, note)
         return f"Got it: {describe(updated_rule)}.{example_line(updated_rule)}"
 
     if gap.kind == "conflict":

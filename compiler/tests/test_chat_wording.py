@@ -39,8 +39,8 @@ def test_questions_name_the_situation() -> None:
     s = _session({1: "Meals up to $75 per person."})
     assert "What should happen when a meal costs more than $75?" in s.messages[-1].text
     assert [o.label for o in s.gaps[0].options] == [
-        "Reject it",
-        "Send it to someone to decide",
+        "Reject any meal over $75",
+        "Send meals over $75 to the finance team to approve",
     ]
 
 
@@ -50,7 +50,7 @@ def test_progress_examples_and_final_recap() -> None:
     gap = next(g for g in s.gaps if not g.resolved)
     s = reply(s, gap.id, "review", None)
     confirmation = s.messages[-2].text
-    assert "For example:" in confirmation and "flagged for review" in confirmation
+    assert "For example:" in confirmation and "→ sent to the finance team" in confirmation
     assert s.messages[-1].text.startswith("(2 of ")
     s = _walk(s)
     recap = next(m.text for m in s.messages if m.text.startswith("That's everything"))
@@ -76,7 +76,6 @@ def test_progress_ignores_questions_answered_automatically() -> None:
         s = reply(s, gap.id, gap.options[0].value, None)
     numbered = [x for x in seen if x.startswith("(")]
     totals = [int(x.split(" of ")[1].rstrip(")")) for x in numbered]
-    assert totals == sorted(
-        totals, reverse=True
-    )  # can shrink when a question is skipped, never grow
-    assert [int(x[1:].split(" ")[0]) for x in numbered] == list(range(1, len(numbered) + 1))
+    assert len(set(totals)) == 1  # the total never changes; a skipped question counts as done
+    steps = [int(x[1:].split(" ")[0]) for x in numbered]
+    assert steps == sorted(set(steps)) and steps[0] == 1
