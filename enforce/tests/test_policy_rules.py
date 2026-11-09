@@ -62,9 +62,7 @@ def test_approval_required_by_role() -> None:
     )
     assert _verdict(rule, _expense(400_000, "equipment"))[0] == Verdict.ALLOWED
     verdict, fix = _verdict(rule, _expense(600_000, "equipment"))
-    assert (
-        verdict == Verdict.NEEDS_REVIEW and fix == "Allowed with approval from the finance director"
-    )
+    assert verdict == Verdict.NEEDS_REVIEW and fix == "Allowed with finance director approval"
     assert (
         _verdict(rule, _expense(600_000, "equipment", approvals=["manager"]))[0]
         == Verdict.NEEDS_REVIEW
@@ -166,9 +164,7 @@ def test_lower_approver_does_not_cover_higher_tier() -> None:
         "$60,000 needs CFO approval",
     }
     director = next(t for t in failed if "director" in t.reason)
-    assert (
-        director.fix == "Allowed with approval from the department director or someone above (CFO)"
-    )
+    assert director.fix == "Allowed with department director approval, or from someone above (CFO)"
 
 
 def test_category_approval_is_not_part_of_the_ladder() -> None:

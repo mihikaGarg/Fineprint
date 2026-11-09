@@ -252,7 +252,7 @@ async function viewGrants(v) {
   v.append(el("h1", {}, "Grants"),
     el("p", { class: "muted" }, "Upload a grant agreement. Fineprint reads every clause, proposes rules tied to the exact sentence and page, and rejects anything it can't verify against the PDF."),
     el("div", { class: "row" },
-      el("button", { class: "primary", onclick: () => compileGrant(() => post("/api/compile/demo"), status) }, "Load demo grant (4 pages)"),
+      el("button", { class: "primary", onclick: () => compileGrant(() => post("/api/compile/demo"), status) }, "Load demo grant (5 pages)"),
       el("button", { onclick: () => $("grantFile").click() }, "Upload grant PDF")),
     status);
   $("grantFile").onchange = () => {

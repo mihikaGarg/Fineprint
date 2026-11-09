@@ -294,12 +294,14 @@ def evaluate_rule(
             (r for r, t in (chain or {}).items() if t > (chain or {}).get(normalize_role(role), t)),
             key=lambda r: (chain or {})[r],
         )
-        also = f" or someone above ({', '.join(_role_label(r) for r in above)})" if above else ""
+        also = (
+            f", or from someone above ({', '.join(_role_label(r) for r in above)})" if above else ""
+        )
         return _trace(
             rule,
             outcome,
             f"{_format_cents(amount)} needs {_role_label(role)} approval",
-            f"Allowed with approval from the {_role_label(role)}{also}",
+            f"Allowed with {_role_label(role)} approval{also}",
         )
 
     if rule_type == "merchant_restriction":
