@@ -1,4 +1,5 @@
 import re
+from collections.abc import Iterable, Mapping
 from datetime import date
 from typing import Any
 
@@ -53,6 +54,38 @@ def budget_line_for(category: str) -> str:
 def normalize_role(role: str) -> str:
     """'Finance Director' / 'finance-director' -> 'finance_director'."""
     return re.sub(r"[\s\-]+", "_", role.strip().lower())
+
+
+def approval_chain(rules: Iterable[SpendRule]) -> dict[str, int]:
+    """Each role's place in a policy's spending-authority ladder, as its threshold.
+
+    "Expenses of $1,000 or more need manager approval ... $50,000 or more need CFO
+    approval" means the CFO sits above the manager, so the CFO's sign-off covers
+    the manager tier too. Only company-wide tiers (no categories) form the ladder:
+    "Software needs IT approval" is a different kind of check, not seniority.
+    """
+    chain: dict[str, int] = {}
+    for rule in rules:
+        params = rule.params
+        if rule.rule_type != "approval_required" or rule.status != "approved":
+            continue
+        if params.get("categories") or not params.get("approver_role"):
+            continue
+        role = normalize_role(str(params["approver_role"]))
+        threshold = int(params.get("threshold_cents", 0))
+        chain[role] = min(threshold, chain.get(role, threshold))
+    return chain
+
+
+def _covering_approver(role: str, approvals: Iterable[str], chain: Mapping[str, int]) -> str | None:
+    """The approval that satisfies `role`: that role itself, or one higher up the chain."""
+    given = [normalize_role(a) for a in approvals]
+    if role in given:
+        return role
+    if role not in chain:
+        return None
+    higher = [a for a in given if a in chain and chain[a] > chain[role]]
+    return max(higher, key=lambda a: chain[a]) if higher else None
 
 
 def _role_label(role: str) -> str:
@@ -112,8 +145,12 @@ def evaluate_rule(
     rule: SpendRule,
     expense: Expense,
     budget_state: BudgetState,
+    chain: Mapping[str, int] | None = None,
 ) -> RuleTrace:
     """Evaluate a single rule against an expense and budget state.
+
+    `chain` is the ruleset's approval ladder (see `approval_chain`); a higher
+    approver satisfies a lower tier's approval_required rule.
 
     Deterministic, pure function, no network or LLM calls. Every FAIL or
     ESCALATE carries a `fix`: what would make this rule pass.
@@ -242,14 +279,27 @@ def evaluate_rule(
                 f"{_format_cents(amount)} is below the "
                 f"{_format_cents(threshold_cents)} approval threshold",
             )
-        if normalize_role(role) in {normalize_role(a) for a in expense.approvals}:
+        covering = _covering_approver(normalize_role(role), expense.approvals, chain or {})
+        if covering == normalize_role(role):
             return _trace(rule, RuleOutcome.PASS, f"Approved by {_role_label(role)}")
+        if covering:
+            return _trace(
+                rule,
+                RuleOutcome.PASS,
+                f"Covered by {_role_label(covering)} approval, "
+                f"which sits above {_role_label(role)}",
+            )
         outcome = RuleOutcome.FAIL if params.get("action") == "block" else RuleOutcome.ESCALATE
+        above = sorted(
+            (r for r, t in (chain or {}).items() if t > (chain or {}).get(normalize_role(role), t)),
+            key=lambda r: (chain or {})[r],
+        )
+        also = f" or someone above ({', '.join(_role_label(r) for r in above)})" if above else ""
         return _trace(
             rule,
             outcome,
             f"{_format_cents(amount)} needs {_role_label(role)} approval",
-            f"Allowed with approval from the {_role_label(role)}",
+            f"Allowed with approval from the {_role_label(role)}{also}",
         )
 
     if rule_type == "merchant_restriction":
