@@ -1,13 +1,14 @@
 @import "tailwindcss";
 
 /*
-  Identity: a press proof, printed in the Ocean Breeze palette. Deep Twilight
-  (#03045e) is the ink, Bright Teal Blue (#0077b6) the accent, Frosted Blue
+  Identity: a press proof, printed in the Ocean Breeze palette, light only. Deep
+  Twilight (#03045e) is the ink, Bright Teal Blue (#0077b6) the accent, Frosted Blue
   (#90e0ef) the highlighter on quoted clauses, a Light Cyan (#caf0f8) tint the
   paper. Verdict colors stay green / red / amber so finance people read them
   instantly.
 */
 :root {
+  color-scheme: light;
   --paper: #f2fafc;
   --paper-raised: #ffffff;
   --ink: #03045e;
@@ -24,27 +25,6 @@
   --blocked-bg: #f9dfe0;
   --review: #a86400;
   --review-bg: #f8ebcf;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --paper: #020330;
-    --paper-raised: #070a42;
-    --ink: #caf0f8;
-    --ink-muted: #8fb2c8;
-    --rule: #1b2464;
-    --accent: #00b4d8;
-    --accent-ink: #03045e;
-    --highlight: #90e0ef;
-    --highlight-ink: #03045e;
-    --cyan: #90e0ef;
-    --allowed: #4fd296;
-    --allowed-bg: #12291e;
-    --blocked: #ff6b72;
-    --blocked-bg: #33171a;
-    --review: #f2b54d;
-    --review-bg: #33270f;
-  }
 }
 
 @theme inline {
@@ -106,15 +86,6 @@ mark,
   box-decoration-break: clone;
 }
 
-/* On dark paper the dark letters must sit fully on the stroke. */
-@media (prefers-color-scheme: dark) {
-  mark,
-  .hl {
-    background-size: 100% 100%;
-    background-position: 0 0;
-  }
-}
-
 /* Printer's crop marks at the four corners of a figure. */
 .crop {
   position: relative;
@@ -134,17 +105,6 @@ mark,
     linear-gradient(var(--c), var(--c)) left 0 bottom 0 / 1px 9px no-repeat,
     linear-gradient(var(--c), var(--c)) right 0 bottom 0 / 9px 1px no-repeat,
     linear-gradient(var(--c), var(--c)) right 0 bottom 0 / 1px 9px no-repeat;
-}
-
-/* Always-navy panels (app sidebar, mission band): pin the inks in both themes. */
-.press-black {
-  --paper: #caf0f8;
-  --ink: #03045e;
-  --accent: #00b4d8;
-  --accent-ink: #03045e;
-  --highlight: #90e0ef;
-  background: #03045e;
-  color: #caf0f8;
 }
 
 summary::-webkit-details-marker {

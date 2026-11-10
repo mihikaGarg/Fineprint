@@ -116,12 +116,12 @@ export default function Home() {
         </section>
 
         {/* Mission */}
-        <section id="mission" className="press-black border-y border-rule">
+        <section id="mission" className="border-b border-ink bg-[#caf0f8]">
           <div className="mx-auto grid max-w-7xl gap-12 px-4 py-20 sm:px-6 lg:grid-cols-[1.1fr_1fr]">
             <h2 className="font-display text-[clamp(2.25rem,4.6vw,4rem)]">
               Grant money comes with conditions. Most teams learn they broke one at the audit.
             </h2>
-            <div className="space-y-5 text-[17px] leading-relaxed text-paper/75">
+            <div className="space-y-5 text-[17px] leading-relaxed text-ink-muted">
               <p>
                 A research lab spends against an award agreement and the university&apos;s own expense
                 policy at the same time. The rules that matter are scattered across both: a cap on
@@ -131,7 +131,7 @@ export default function Home() {
                 Today someone remembers them, or a spreadsheet does. When a charge slips through, the
                 money comes back out of the department&apos;s budget months later.
               </p>
-              <p className="text-paper">
+              <p className="font-medium text-ink">
                 Our mission is to check every dollar against the exact words it&apos;s bound by, before
                 it moves, and to show the sentence that decided it.
               </p>

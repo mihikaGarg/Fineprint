@@ -35,7 +35,7 @@ function ResetButton() {
   const [confirming, setConfirming] = useState(false);
   const router = useRouter();
   const { refresh } = useAppState();
-  const quiet = "text-sm text-paper/60 underline-offset-4 hover:text-paper hover:underline";
+  const quiet = "text-sm text-ink-muted underline-offset-4 hover:text-ink hover:underline";
   if (!confirming) {
     return (
       <button type="button" className={quiet} onClick={() => setConfirming(true)}>
@@ -45,7 +45,7 @@ function ResetButton() {
   }
   return (
     <div className="flex flex-wrap items-center gap-3 text-sm">
-      <span className="text-paper/60">Clear everything?</span>
+      <span className="text-ink-muted">Clear everything?</span>
       <button
         type="button"
         className="bg-accent px-2.5 py-1 font-semibold text-accent-ink"
@@ -83,8 +83,8 @@ function Nav() {
               "flex shrink-0 items-center justify-between gap-3 border-b-2 px-1 py-1.5 text-sm transition-colors",
               "lg:border-b-0 lg:border-l-2 lg:px-3",
               active
-                ? "border-accent font-semibold text-paper"
-                : "border-transparent text-paper/60 hover:border-paper/30 hover:text-paper",
+                ? "border-accent font-semibold text-ink"
+                : "border-transparent text-ink-muted hover:border-rule hover:text-ink",
             )}
           >
             {item.label}
@@ -92,7 +92,7 @@ function Nav() {
               <span
                 className={cx(
                   "font-mono text-xs font-normal tabular-nums",
-                  badge === "open" ? "text-highlight" : badge === "done" ? "text-paper/60" : "text-paper/50",
+                  badge === "open" ? "text-accent" : "text-ink-muted",
                 )}
               >
                 {badge === "open" ? "open" : badge === "done" ? "done" : badge}
@@ -109,7 +109,7 @@ function Frame({ children }: { children: React.ReactNode }) {
   const { state, error } = useAppState();
   return (
     <div className="min-h-screen lg:grid lg:grid-cols-[15rem_1fr]">
-      <aside className="press-black px-4 pt-4 pb-2 lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col lg:px-5 lg:py-6">
+      <aside className="border-b border-rule bg-paper-raised px-4 pt-4 pb-2 lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col lg:border-b-0 lg:border-r lg:px-5 lg:py-6">
         <div className="mb-3 flex items-center justify-between lg:mb-8">
           <Wordmark />
           <div className="lg:hidden">
@@ -118,7 +118,7 @@ function Frame({ children }: { children: React.ReactNode }) {
         </div>
         <Nav />
         <div className="mt-auto hidden space-y-3 lg:block">
-          <p className="font-mono text-[11px] text-paper/50">
+          <p className="font-mono text-[11px] text-ink-muted">
             {state ? (state.llm_enabled ? "Reading with Claude" : "Reading offline, no API key") : ""}
           </p>
           <ResetButton />
