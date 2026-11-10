@@ -132,19 +132,21 @@ const role = (r) => r.length <= 3 ? r.toUpperCase() : r.replace(/_/g, " ");
 const pill = (cls, text) => el("span", { class: `pill ${cls}` }, text);
 const verdictText = (v) => ({ ALLOWED: "Allowed", NEEDS_REVIEW: "Needs review", BLOCKED: "Blocked" }[v] || v);
 function describe(rule) {
-  const p = rule.params, cats = (p.categories || []).map(label).join(", ") || "any expense";
-  const act = { block: "blocked", review: "sent for review" }[p.action] || "action not chosen yet";
+  const p = rule.params, cats = (p.categories || []).map(label).join(" and ") || "any expense";
+  const outcome = { block: "not allowed", review: "flagged for review" }[p.action] || "you haven't said what happens yet";
+  let line;
   switch (rule.rule_type) {
-    case "category_prohibition": return `${(p.prohibited_categories || []).map(label).join(", ")}: ${p.action === "review" ? "sent for review" : "blocked"}`;
-    case "per_item_cap": return `${cats} over ${money(p.cap_cents)} per charge: ${act}`;
-    case "approval_required": return `${cats} ${p.threshold_cents ? "from " + money(p.threshold_cents) : "(any amount)"} needs ${role(p.approver_role || "?")} approval, otherwise ${act}`;
-    case "merchant_restriction": return `purchases from ${p.merchants.join(", ")}: blocked`;
-    case "receipt_required": return `receipt needed from ${money(p.threshold_cents)} on ${cats}`;
-    case "period_of_performance": return `only expenses dated ${p.label}`;
-    case "budget_limit": return `must fit the ${label(p.budget_line)} budget line`;
-    case "threshold_approval": return `${label(p.category)} from ${money(p.threshold_cents)} needs prior written approval`;
-    default: return rule.name;
+    case "category_prohibition": line = `${(p.prohibited_categories || []).map(label).join(" and ")}: ${p.action === "review" ? "only after review" : "not allowed"}`; break;
+    case "per_item_cap": line = `${cats} over ${money(p.cap_cents)}: ${outcome}`; break;
+    case "approval_required": line = `${cats}${p.threshold_cents ? " from " + money(p.threshold_cents) : ""} needs ${role(p.approver_role || "?")} approval; without it, ${outcome}`; break;
+    case "merchant_restriction": line = `purchases from ${p.merchants.join(", ")}: not allowed`; break;
+    case "receipt_required": line = `receipt needed ${p.threshold_cents ? "from " + money(p.threshold_cents) : "on every expense"}${(p.categories || []).length ? " (" + cats + ")" : ""}`; break;
+    case "period_of_performance": line = `only expenses dated ${p.label}`; break;
+    case "budget_limit": line = `must fit the ${label(p.budget_line)} budget line`; break;
+    case "threshold_approval": line = `${label(p.category)} from ${money(p.threshold_cents)} needs the sponsor's prior written approval`; break;
+    default: line = rule.name;
   }
+  return line.charAt(0).toUpperCase() + line.slice(1);
 }
 
 // ---------- app state ----------
@@ -210,16 +212,37 @@ async function viewOverview(v) {
       log.length ? expenseTable(log.slice(0, 6)) : el("p", { class: "muted" }, "No expenses checked yet.")),
   );
 }
+function budgetLines(b, onChange) {
+  const rows = b.lines.map((l) => {
+    const pct = l.allocated_cents ? Math.min(100, Math.round((l.spent_cents / l.allocated_cents) * 100)) : 0;
+    return el("div", { class: "item" },
+      el("div", { class: "row", style: "justify-content:space-between" },
+        el("b", {}, l.label), el("span", { class: "muted" }, `${money(l.spent_cents)} of ${money(l.allocated_cents)} spent · ${money(l.remaining_cents)} left`)),
+      el("div", { class: "bar" }, el("span", { style: `width:${pct}%;background:${pct > 90 ? "var(--bad)" : "var(--ok)"}` })),
+      el("div", { class: "quote" }, l.source));
+  });
+  const missing = b.missing.map((line) => {
+    const input = el("input", { placeholder: "e.g. 5,000", style: "max-width:140px" });
+    const msg = el("span", { class: "err" });
+    return el("div", { class: "item" },
+      el("div", {}, el("b", {}, label(line)), el("span", { class: "muted" }, ": a rule refers to this budget line, but the agreement doesn't give an amount.")),
+      el("div", { class: "row" }, el("span", { class: "muted" }, "Approved amount $"), input,
+        el("button", { class: "small primary", onclick: async () => {
+          const cents = toCents(input.value);
+          if (!cents) { msg.textContent = "Enter an amount like 5000"; return; }
+          await post(`/api/grants/${b.grant_id}/budget`, { line, allocated_cents: cents });
+          onChange();
+        } }, "Save"), msg));
+  });
+  if (!rows.length && !missing.length) return [el("p", { class: "muted" }, "No budget table found in this agreement.")];
+  return [...rows, ...missing];
+}
 function budgetCard() {
-  const lines = Object.entries(state.budget.lines);
-  return el("div", { class: "card" }, el("h2", {}, "Grant budget"),
-    el("p", { class: "muted" }, "Spend is recorded when an expense is allowed."),
-    lines.map(([k, l]) => {
-      const pct = Math.min(100, Math.round((l.spent_cents / l.allocated_cents) * 100));
-      return el("div", { class: "item" }, el("div", { class: "row", style: "justify-content:space-between" },
-        el("b", {}, label(k)), el("span", { class: "muted" }, `${money(l.spent_cents)} of ${money(l.allocated_cents)} (${pct}%)`)),
-        el("div", { class: "bar" }, el("span", { style: `width:${pct}%;background:${pct > 90 ? "var(--bad)" : "var(--ok)"}` })));
-    }));
+  return el("div", { class: "card" }, el("h2", {}, "Grant budgets"),
+    el("p", { class: "muted" }, "Read from each agreement's budget table. Spend is recorded when an expense is allowed."),
+    state.budgets.length
+      ? state.budgets.map((b) => el("div", {}, state.budgets.length > 1 ? el("h3", {}, b.name) : "", budgetLines(b, route)))
+      : el("p", { class: "muted" }, "Add a grant to see its budget."));
 }
 
 // ---------- grants ----------
@@ -229,7 +252,7 @@ async function viewGrants(v) {
   v.append(el("h1", {}, "Grants"),
     el("p", { class: "muted" }, "Upload a grant agreement. Fineprint reads every clause, proposes rules tied to the exact sentence and page, and rejects anything it can't verify against the PDF."),
     el("div", { class: "row" },
-      el("button", { class: "primary", onclick: () => compileGrant(() => post("/api/compile/demo"), status) }, "Load demo grant (4 pages)"),
+      el("button", { class: "primary", onclick: () => compileGrant(() => post("/api/compile/demo"), status) }, "Load demo grant (5 pages)"),
       el("button", { onclick: () => $("grantFile").click() }, "Upload grant PDF")),
     status);
   $("grantFile").onchange = () => {
@@ -259,6 +282,8 @@ async function grantCard(id) {
     el("p", { class: "muted" }, `${c.rules} became rules · ${c.flagged} flagged as ambiguous · ${c.rejected} rejected · ${c.no_rule} with no spending rule`),
     el("h3", {}, "Rules"),
     cards.map((card) => ruleCard(card, id)),
+    el("h3", {}, "Approved budget"),
+    budgetLines(state.budgets.find((b) => b.grant_id === id) || { grant_id: id, lines: [], missing: [] }, route),
     g.rejected.length ? el("details", {}, el("summary", { class: "muted" }, `Rejected suggestions (${g.rejected.length}): never became rules`),
       g.rejected.map((x) => el("div", { class: "item" }, el("span", { class: "err" }, x.reason), el("div", { class: "quote" }, `“${x.candidate.quote}” (p. ${x.candidate.page})`)))) : "",
     el("details", {}, el("summary", { class: "muted" }, `Every clause (${c.total})`),
@@ -285,7 +310,8 @@ async function viewPolicy(v) {
   const log = el("div", { class: "log" });
   const input = el("input", { autocomplete: "off", placeholder: "Type a message…", disabled: true });
   const send = el("button", { class: "primary", disabled: true }, "Send");
-  const composer = el("form", { class: "composer" }, input, send);
+  const undo = el("button", { type: "button", class: "small", disabled: true, title: "Step back one answer" }, "Undo last answer");
+  const composer = el("form", { class: "composer" }, undo, input, send);
   const rulesBox = el("div");
   v.append(el("h1", {}, "Company policy"),
     el("p", { class: "muted" }, "Upload your existing expense policy. The assistant reads it into rules, then walks you through anything vague, missing or with exceptions."),
@@ -302,10 +328,11 @@ async function viewPolicy(v) {
     const last = s.messages[s.messages.length - 1];
     const open = last && last.role === "assistant" && last.gap_id && !s.gaps.find((g) => g.id === last.gap_id)?.resolved;
     if (open && last.options.length) {
-      log.append(el("div", { class: "opts" }, last.options.map((o) => el("button", { class: o.value === "approve" ? "primary" : "", onclick: () => reply({ gap_id: last.gap_id, value: o.value }, o.label) }, o.label))));
+      log.append(el("div", { class: "opts" }, last.options.map((o) => el("button", { class: o.value === "approve" || o.suggested ? "primary" : "", onclick: () => reply({ gap_id: last.gap_id, value: o.value }, o.label) }, o.label))));
       log.scrollTop = log.scrollHeight;
     }
     setComposer(true, open ? (last.free_text_hint || "Type a reply…") : "Type a new rule…");
+    undo.disabled = !s.messages.some((m) => m.role === "user");
     rulesBox.replaceChildren(el("div", {},
       el("p", { class: "muted" }, `${s.ruleset.rules.length} rules · read by ${s.drafter}${s.grant_ids.length ? " · checked against " + s.grant_ids.length + " grant(s)" : ""}`),
       s.ruleset.rules.map((r) => el("div", { class: "item" }, pill(r.status, r.status.toUpperCase()), " ", describe(r),
@@ -336,6 +363,15 @@ async function viewPolicy(v) {
     } catch (e) { typing(false); bubble("assistant", `Sorry, I couldn't read that: ${e.message}`); }
     finally { busy = false; log.querySelectorAll(".opts button").forEach((b) => (b.disabled = false)); }
   }
+  undo.addEventListener("click", async () => {
+    if (busy || !chat) return;
+    busy = true; undo.disabled = true;
+    try {
+      const s = await post(`/api/chat/${chat.session_id}/undo`);
+      log.replaceChildren(); shownMsgs = 0; render(s); refresh();
+    } catch (e) { bubble("assistant", e.message === "Nothing to undo" ? "There's nothing to undo yet." : `Couldn't undo: ${e.message}`); }
+    finally { busy = false; }
+  });
   let typedStart = false;
   composer.addEventListener("submit", (ev) => {
     ev.preventDefault();
@@ -455,9 +491,16 @@ function resultCard(item) {
   const issues = r.traces.filter((t) => t.outcome !== "PASS");
   return el("div", { class: "item", style: "margin-top:12px" },
     el("div", { class: "verdict" }, pill(r.verdict, verdictText(r.verdict).toUpperCase()), ` ${money(e.amount_cents)} · ${label(e.category)}`),
-    el("p", { class: "muted" }, `Checked ${r.traces.length} applicable rules from ${item.ruleset_ids.length} rulebook(s) in ${r.latency_ms} ms.${item.recorded_spend ? " Spend recorded against the grant budget." : ""}`),
+    el("p", { class: "muted" }, `Checked ${r.traces.length} applicable rules from ${item.ruleset_ids.length} rulebook(s) in ${r.latency_ms} ms.${item.spent_on ? ` Spend recorded: ${item.spent_on.replace(/_/g, " ")}.` : ""}${spendNote(item)}`),
     issues.length ? issues.map(traceRow) : el("p", {}, "Every applicable rule passed."),
     el("details", {}, el("summary", { class: "muted" }, "All rules checked"), r.traces.map(traceRow)));
+}
+function spendNote(item) {
+  if (item.spent_on || item.result.verdict !== "ALLOWED") return "";
+  const grants = item.ruleset_ids.filter((id) => state.rulesets.find((r) => r.id === id)?.kind === "grant");
+  if (grants.length > 1) return " Spend not recorded: it was checked against several grants, so tick only the grant it's charged to.";
+  if (!grants.length) return " Spend not recorded: no grant was checked.";
+  return " Spend not recorded: this grant has no budget line for that category.";
 }
 function traceRow(t) {
   return el("div", { class: "item" }, pill(t.outcome, t.outcome), " ",

@@ -112,14 +112,14 @@ const label = (c) => ({ travel_domestic: "domestic travel", first_class_airfare:
 const role = (r) => r.length <= 3 ? r.toUpperCase() : r.replace(/_/g, " ");
 
 function describe(rule) {
-  const p = rule.params, cats = (p.categories || []).map(label).join(", ") || "any expense";
-  const act = { block: "blocked", review: "sent for review" }[p.action] || "action not set";
+  const p = rule.params, cats = (p.categories || []).map(label).join(" and ") || "any expense";
+  const outcome = { block: "not allowed", review: "flagged for review" }[p.action] || "you haven't said what happens yet";
   switch (rule.rule_type) {
-    case "category_prohibition": return `${(p.prohibited_categories || []).map(label).join(", ")}: ${p.action === "review" ? "sent for review" : "blocked"}`;
-    case "per_item_cap": return `${cats} over ${money(p.cap_cents)} per charge: ${act}`;
-    case "approval_required": return `${cats} ${p.threshold_cents ? "from " + money(p.threshold_cents) : "(any amount)"} needs ${role(p.approver_role || "?")} approval, otherwise ${act}`;
-    case "merchant_restriction": return `purchases from ${p.merchants.join(", ")}: blocked`;
-    case "receipt_required": return `receipt needed from ${money(p.threshold_cents)} on ${cats}`;
+    case "category_prohibition": return `${(p.prohibited_categories || []).map(label).join(" and ")}: ${p.action === "review" ? "only after review" : "not allowed"}`;
+    case "per_item_cap": return `${cats} over ${money(p.cap_cents)}: ${outcome}`;
+    case "approval_required": return `${cats}${p.threshold_cents ? " from " + money(p.threshold_cents) : ""} needs ${role(p.approver_role || "?")} approval; without it, ${outcome}`;
+    case "merchant_restriction": return `purchases from ${p.merchants.join(", ")}: not allowed`;
+    case "receipt_required": return `receipt needed ${p.threshold_cents ? "from " + money(p.threshold_cents) : "on every expense"}`;
     case "period_of_performance": return `only dates ${p.label}`;
     case "budget_limit": return `must fit the ${label(p.budget_line)} budget line`;
     case "threshold_approval": return `${label(p.category)} from ${money(p.threshold_cents)} needs prior written approval`;

@@ -5,9 +5,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from compiler.budget import BudgetItem, read_budget
 from compiler.citation import verify_citation
 from compiler.coverage import Coverage, build_coverage
-from compiler.extractor import extract_pdf_pages
+from compiler.extractor import UnreadablePdfError, extract_pdf_pages
 from compiler.llm_propose import make_llm_proposer
 from compiler.propose import Proposal, propose_rules
 from contracts.models import Ruleset, RuleStatus, SpendRule
@@ -24,6 +25,7 @@ class CompileResult:
     rejected: list[dict[str, Any]]
     flagged: list[dict[str, Any]]
     coverage: Coverage
+    budget: list[BudgetItem]
     proposer: str = "keyword"
 
 
@@ -77,6 +79,7 @@ def compile_pages_full(
         rejected=rejected,
         flagged=proposal.flagged,
         coverage=build_coverage(pages, ruleset, rejected, proposal.flagged),
+        budget=read_budget(pages),
     )
 
 
@@ -107,6 +110,10 @@ def compile_grant_pdf(
     call fails, falls back to the keyword proposer and says so.
     """
     pages = {p.page_number: p.raw_text for p in extract_pdf_pages(pdf_bytes)}
+    if not any(text.strip() for text in pages.values()):
+        raise UnreadablePdfError(
+            "This PDF has no readable text (is it a scanned image?). Upload a text-based PDF."
+        )
     grant_id = f"grant_{hashlib.sha256(pdf_bytes).hexdigest()[:12]}"
 
     if use_llm():

@@ -55,6 +55,16 @@ def test_upload_text_file_and_reply_errors() -> None:
     assert "Fineprint policy assistant" in client.get("/chat").text
 
 
+def travel_spent(state: dict[str, Any]) -> int:
+    budgets: list[dict[str, Any]] = state["budgets"]
+    return next(
+        line["spent_cents"]
+        for b in budgets
+        for line in b["lines"]
+        if line["line"] == "travel_domestic"
+    )
+
+
 def test_full_app_flow_state_budget_and_reset() -> None:
     client.post("/api/reset")
     assert client.get("/api/state").json()["rulesets"] == []
@@ -70,7 +80,8 @@ def test_full_app_flow_state_budget_and_reset() -> None:
     assert {r["kind"] for r in state["rulesets"]} == {"grant", "policy"}
     assert all(r["approved"] == r["rules"] for r in state["rulesets"])
 
-    before = state["budget"]["lines"]["travel_domestic"]["spent_cents"]
+    before = travel_spent(state)
+    assert before == 0  # nothing spent yet; the budget comes from the grant, not a fixture
     expense = {
         "id": "T1",
         "amount_cents": 20_000,
@@ -81,7 +92,7 @@ def test_full_app_flow_state_budget_and_reset() -> None:
     }
     item = client.post("/api/expenses/check", json={"expense": expense}).json()
     assert item["result"]["verdict"] == "ALLOWED" and item["recorded_spend"] is True
-    after = client.get("/api/state").json()["budget"]["lines"]["travel_domestic"]["spent_cents"]
+    after = travel_spent(client.get("/api/state").json())
     assert after == before + 20_000
 
     batch = client.post("/api/expenses/sample-batch", json={}).json()
@@ -93,4 +104,22 @@ def test_full_app_flow_state_budget_and_reset() -> None:
     client.post("/api/reset")
     state = client.get("/api/state").json()
     assert state["rulesets"] == [] and state["expenses_checked"] == 0
-    assert state["budget"]["lines"]["travel_domestic"]["spent_cents"] == before
+    assert state["budgets"] == []
+
+
+def test_undo_last_answer_steps_back_one_answer() -> None:
+    s = client.post("/api/chat/start", data={"text": "Meals up to $75. No alcohol."}).json()
+    sid = s["session_id"]
+    assert client.post(f"/api/chat/{sid}/undo").status_code == 400  # nothing yet
+    gaps: list[dict[str, Any]] = s["gaps"]
+    gap = next(g for g in gaps if not g["resolved"])
+    after = client.post(
+        f"/api/chat/{sid}/reply", json={"gap_id": gap["id"], "value": "block"}
+    ).json()
+    meal = next(r for r in after["ruleset"]["rules"] if r["rule_type"] == "per_item_cap")
+    assert meal["params"]["action"] == "block"
+    back = client.post(f"/api/chat/{sid}/undo").json()
+    assert len(back["messages"]) == len(s["messages"])
+    meal = next(r for r in back["ruleset"]["rules"] if r["rule_type"] == "per_item_cap")
+    assert meal["params"]["action"] is None
+    assert client.get(f"/api/rulesets/{sid}").json()["rules"] == back["ruleset"]["rules"]

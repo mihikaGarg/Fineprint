@@ -11,6 +11,8 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
 
+from compiler.sentences import split_sentences
+
 MONTHS = {
     m: i
     for i, m in enumerate(
@@ -36,9 +38,6 @@ DATE_RE = re.compile(
     re.IGNORECASE,
 )
 DOLLAR_RE = re.compile(r"\$\s?(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{2}))?")
-SENTENCE_SPLIT_RE = re.compile(
-    r"(?<=[.;])\s+|\n(?=[A-Z0-9§])"
-)  # sentence end, or a new line that starts a heading or numbered clause
 
 PROHIBITED_KEYWORDS = {
     "alcohol": "alcohol",
@@ -84,8 +83,8 @@ def parse_dollars_to_cents(text: str) -> int | None:
 
 
 def _sentences(text: str) -> list[str]:
-    """Sentences as exact substrings of the page text (so citations verify)."""
-    return [s.strip() for s in SENTENCE_SPLIT_RE.split(text) if s.strip()]
+    """Sentences (not headings) as exact substrings of the page text, so citations verify."""
+    return [s.text for s in split_sentences(text) if not s.heading]
 
 
 RULE_TYPES = (

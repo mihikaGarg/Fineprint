@@ -23,16 +23,21 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from compiler.citation import verify_citation
+from compiler.examples import examples_for, noun_for
 from compiler.policy import (
     PolicyDraft,
     _build_rule,  # pyright: ignore[reportPrivateUsage]
 )
 from compiler.policy_offline import CATEGORY_WORDS, read_policy
-from compiler.propose import SENTENCE_SPLIT_RE, parse_dollars_to_cents
+from compiler.propose import parse_dollars_to_cents
+from compiler.recommend import Suggestion, suggest_action, suggest_exception
+from compiler.sentences import split_sentences
 from contracts.models import Ruleset, SpendRule
 from enforce.rules import format_cents
 
-GapKind = Literal["question", "exception", "vague", "unsupported", "missing", "conflict", "final"]
+GapKind = Literal[
+    "question", "exception", "narrow", "vague", "unsupported", "missing", "conflict", "final"
+]
 
 EXCEPT_RE = re.compile(r"\b(except|unless|other than|without prior)\b", re.IGNORECASE)
 VAGUE_RE = re.compile(
@@ -67,14 +72,17 @@ def role_label(role: str) -> str:
 
 
 GROUP_NOUNS = {
-    "approval_required": ("approval rules", "when approval is missing"),
-    "per_item_cap": ("spending caps", "when a charge is over the limit"),
+    "approval_required": ("approval rules", "when someone spends without the required approval"),
+    "per_item_cap": ("spending limits", "when someone goes over them"),
 }
+OUTCOME = {"block": "not allowed", "review": "flagged for review", "allow": "approved anyway"}
 
 
 class ChatOption(BaseModel):
     label: str
     value: str
+    # Suggested from the policy's own wording; shown first and highlighted.
+    suggested: bool = False
 
 
 class Gap(BaseModel):
@@ -90,6 +98,12 @@ class Gap(BaseModel):
     page: int | None = None
     quote: str | None = None
     category: str | None = None
+    # Answered automatically (e.g. already covered); counts as done in "(2 of 6)".
+    auto: bool = False
+    # Why the highlighted choice is suggested (shown once per reason).
+    suggest_reason: str | None = None
+    # For "narrow" gaps: the held-back rule, applied to the whole category if the user agrees.
+    rule: SpendRule | None = None
     resolved: bool = False
 
 
@@ -117,30 +131,57 @@ class PolicySession(BaseModel):
     approved: bool = False
 
 
+def _scope(rule: SpendRule) -> str:
+    """What a rule would cover if applied to its whole category, e.g. "domestic travel"."""
+    cats: list[str] = rule.params.get("categories") or rule.params.get("prohibited_categories", [])
+    what = " and ".join(label(c) for c in cats) or "expenses"
+    threshold = int(rule.params.get("threshold_cents") or rule.params.get("cap_cents") or 0)
+    if rule.rule_type == "approval_required" and threshold:
+        return f"{what} from {format_cents(threshold)}"
+    if rule.rule_type == "per_item_cap":
+        return f"{what} over {format_cents(threshold)}"
+    return what
+
+
 def describe(rule: SpendRule) -> str:
-    """One plain-English line for a rule, for chat confirmations."""
+    """One plain-English line for a rule, e.g. "Meals over $75: flagged for review"."""
     p = rule.params
     categories: list[str] = p.get("categories") or []
-    cats = ", ".join(label(c) for c in categories) or "any expense"
-    action = {"block": "blocked", "review": "sent for review"}.get(
-        p.get("action") or "", "action not chosen yet"
-    )
+    cats = " and ".join(label(c) for c in categories) or "any expense"
+    outcome = OUTCOME.get(p.get("action") or "", "you haven't said what happens yet")
     t = rule.rule_type
     if t == "category_prohibition":
-        what = ", ".join(label(c) for c in p.get("prohibited_categories", []))
-        return f"{what}: {'blocked' if p.get('action', 'block') == 'block' else 'sent for review'}"
-    if t == "per_item_cap":
-        return f"{cats} over {format_cents(p['cap_cents'])} per charge: {action}"
-    if t == "approval_required":
+        what = " and ".join(label(c) for c in p.get("prohibited_categories", []))
+        allowed = "not allowed" if p.get("action", "block") == "block" else "held for review"
+        line = f"{what}: {allowed}"
+    elif t == "per_item_cap":
+        line = f"{cats} over {format_cents(p['cap_cents'])}: {outcome}"
+    elif t == "approval_required":
         role = role_label(str(p.get("approver_role") or "?"))
         threshold = int(p.get("threshold_cents", 0))
-        when = f"from {format_cents(threshold)}" if threshold else "(any amount)"
-        return f"{cats} {when} needs {role} approval, otherwise {action}"
-    if t == "merchant_restriction":
-        return f"purchases from {', '.join(p['merchants'])}: blocked"
-    if t == "receipt_required":
-        return f"receipt needed from {format_cents(p.get('threshold_cents', 0))} on {cats}"
-    return rule.name
+        when = f" from {format_cents(threshold)}" if threshold else ""
+        verb = "need" if cats.endswith("s") else "needs"
+        line = f"{cats}{when} {verb} {role} approval; without it, {outcome}"
+    elif t == "merchant_restriction":
+        line = f"purchases from {', '.join(p['merchants'])}: not allowed"
+    elif t == "receipt_required":
+        threshold = int(p.get("threshold_cents", 0))
+        when = f"from {format_cents(threshold)}" if threshold else "on every expense"
+        line = f"receipt needed {when}" + (f" ({cats})" if categories else "")
+    else:
+        line = rule.name
+    return line[:1].upper() + line[1:]
+
+
+def example_line(rule: SpendRule) -> str:
+    """A concrete example from the real engine, e.g. "$90 expense → flagged for review"."""
+    if rule.params.get("action") == "allow":
+        return ""
+    for ex in examples_for(rule):
+        if ex.verdict != "ALLOWED":
+            outcome = "not allowed" if ex.verdict == "BLOCKED" else "held for review"
+            return f" For example: {ex.description} → {outcome}."
+    return ""
 
 
 # --- Gap finding ----------------------------------------------------------------
@@ -156,10 +197,10 @@ def _categories(text: str) -> list[str]:
 
 def _sentences(pages: dict[int, str]) -> list[tuple[int, str]]:
     return [
-        (page, s.strip())
+        (page, s.text)
         for page, text in sorted(pages.items())
-        for s in SENTENCE_SPLIT_RE.split(text)
-        if s.strip()
+        for s in split_sentences(text)
+        if not s.heading
     ]
 
 
@@ -176,13 +217,10 @@ def find_gaps(draft: PolicyDraft, grants: list[Ruleset]) -> list[Gap]:
     cited = {(r.citation.page, r.citation.quote) for r in rules}
     rejected_quotes = {str(x["candidate"].get("quote", "")).strip() for x in draft.rejected}
 
-    by_id = {r.id: r for r in rules}
-    groups: dict[str, list[Any]] = {}
-    for q in draft.questions:
-        rule_type = by_id[q.rule_id].rule_type
-        if q.field == "action" and rule_type in GROUP_NOUNS:
-            groups.setdefault(rule_type, []).append(q)
-            continue
+    # One question per rule, so each gets choices in its own terms; "what happens
+    # when it's broken" questions come first.
+    questions = sorted(draft.questions, key=lambda q: q.field != "action")
+    for q in questions:
         gaps.append(
             Gap(
                 id=f"q:{q.id}",
@@ -192,26 +230,6 @@ def find_gaps(draft: PolicyDraft, grants: list[Ruleset]) -> list[Gap]:
                 rule_id=q.rule_id,
                 field=q.field,
             )
-        )
-    for rule_type, qs in groups.items():
-        noun, when = GROUP_NOUNS[rule_type]
-        quotes = "; ".join(f'"{by_id[q.rule_id].citation.quote}"' for q in qs)
-        prompt = (
-            f"Your {len(qs)} {noun} don't say what should happen {when} ({quotes}). "
-            "What should happen?"
-            if len(qs) > 1
-            else qs[0].question
-        )
-        gaps.insert(
-            0,
-            Gap(
-                id=f"group:{rule_type}:action",
-                kind="question",
-                prompt=prompt,
-                options=[ChatOption(label=o.label, value=o.value) for o in qs[0].options],
-                rule_ids=[q.rule_id for q in qs],
-                field="action",
-            ),
         )
 
     for r in rules:
@@ -226,11 +244,10 @@ def find_gaps(draft: PolicyDraft, grants: list[Ruleset]) -> list[Gap]:
                         "applies). What should happen to these expenses?"
                     ),
                     options=[
+                        ChatOption(label="Send each one to someone to check", value="review"),
                         ChatOption(
-                            label="Flag each one so a person checks the exception", value="review"
-                        ),
-                        ChatOption(
-                            label="Always block, even when the exception applies", value="block"
+                            label="Always reject them, even when the exception applies",
+                            value="block",
                         ),
                     ],
                     rule_id=r.id,
@@ -238,6 +255,34 @@ def find_gaps(draft: PolicyDraft, grants: list[Ruleset]) -> list[Gap]:
                     quote=r.citation.quote,
                 )
             )
+
+    for x in draft.rejected:
+        if "narrow" not in x:
+            continue
+        held = SpendRule.model_validate(x["narrow"]["rule"])
+        phrase = x["narrow"]["phrase"]
+        scope = _scope(held)
+        gaps.append(
+            Gap(
+                id=f"narrow:{held.id}",
+                kind="narrow",
+                prompt=(
+                    f'"{held.citation.quote}" (p. {held.citation.page}) is only about {phrase}. '
+                    f"I can't tell {phrase} apart from other {scope}, so I'd have to apply it to "
+                    f"all {scope}. What should I do?"
+                ),
+                options=[
+                    ChatOption(
+                        label=f"Apply it to all {scope}, but flag them for review", value="review"
+                    ),
+                    ChatOption(label=f"Apply it to all {scope} and don't allow any", value="block"),
+                    ChatOption(label=f"Skip it; someone checks {phrase} by hand", value="skip"),
+                ],
+                page=held.citation.page,
+                quote=held.citation.quote,
+                rule=held,
+            )
+        )
 
     for x in draft.rejected:
         quote = str(x["candidate"].get("quote", "")).strip()
@@ -331,8 +376,8 @@ def find_gaps(draft: PolicyDraft, grants: list[Ruleset]) -> list[Gap]:
                 kind="missing",
                 prompt="Your policy doesn't mention alcohol. How should alcohol be handled?",
                 options=[
-                    ChatOption(label="Block it", value="block"),
-                    ChatOption(label="Send for review", value="review"),
+                    ChatOption(label="Reject alcohol", value="block"),
+                    ChatOption(label="Send it to someone to decide", value="review"),
                     ChatOption(label="Allow it", value="skip"),
                 ],
             )
@@ -369,7 +414,126 @@ def find_gaps(draft: PolicyDraft, grants: list[Ruleset]) -> list[Gap]:
                         options=[ChatOption(label="Got it", value="ok")],
                     )
                 )
+    for gap in gaps:
+        _suggest(gap, rules, draft.pages)
     return gaps
+
+
+def _plural_noun(noun: str) -> str:
+    return noun if noun.endswith("s") else f"{noun}s"
+
+
+EXCEPTION_RE = re.compile(r"\b(unless|except|other than)\b\s+(.+?)[.;!]?$", re.IGNORECASE)
+
+
+def action_options(rule: SpendRule) -> list[ChatOption] | None:
+    """Reject or approve anyway, in this rule's own terms (its item, amount, approver).
+
+    A rule with an exception can't be approved blindly: whether the exception
+    applies is unknown, so it's held for review (ambiguity escalates) or rejected.
+    """
+    p = rule.params
+    noun = noun_for(rule)
+    many = _plural_noun(noun)
+    if rule.rule_type == "per_item_cap":
+        cap = format_cents(int(p["cap_cents"]))
+        return [
+            ChatOption(label=f"Reject any {noun} over {cap}", value="block"),
+            ChatOption(label=f"Approve {many} over {cap} anyway", value="allow"),
+        ]
+    if rule.rule_type == "approval_required":
+        role = role_label(str(p.get("approver_role") or "the approver's"))
+        threshold = int(p.get("threshold_cents") or 0)
+        scope = f"{many} of {format_cents(threshold)} or more" if threshold else many
+        scope = scope[:1].upper() + scope[1:]
+        return [
+            ChatOption(label=f"Reject {scope.lower()} without {role} sign-off", value="block"),
+            ChatOption(label=f"Approve them anyway without {role} sign-off", value="allow"),
+        ]
+    if rule.rule_type == "category_prohibition":
+        m = EXCEPTION_RE.search(rule.citation.quote)
+        if not m:
+            return None
+        word, rest = m.group(1).lower(), m.group(2).strip()
+        confirm = rest if word == "unless" else f"it was {rest}"
+        even = f"when {rest}" if word == "unless" else rest
+        return [
+            ChatOption(label=f"Hold each {noun} for review to confirm {confirm}", value="review"),
+            ChatOption(label=f"Reject all {many}, even {even}", value="block"),
+        ]
+    return None
+
+
+def _suggest(gap: Gap, rules: list[SpendRule], pages: dict[int, str]) -> None:
+    """Tailor the choices to the rule, put the one the policy points to first, say why."""
+    target = next((r for r in rules if r.id == gap.rule_id), None)
+    if target is not None and (gap.kind == "exception" or gap.field == "action"):
+        options = action_options(target)
+        if options:
+            gap.options = options
+    suggestion: Suggestion | None = None
+    if gap.kind == "exception":
+        suggestion = suggest_exception()
+    elif gap.kind == "question" and gap.field == "action":
+        ids = set(gap.rule_ids or [gap.rule_id])
+        about = [r for r in rules if r.id in ids]
+        if about:
+            quotes = [(r.citation.page, r.citation.quote) for r in about]
+            others = frozenset(r.citation.quote for r in rules)
+            suggestion = suggest_action(about[0].rule_type, quotes, pages, others)
+            if suggestion.value == "review":
+                suggestion = Suggestion("allow", suggestion.reason)
+    if suggestion is None:
+        return
+    pick = next((o for o in gap.options if o.value == suggestion.value), None)
+    if pick is None:
+        return
+    pick.suggested = True
+    gap.options = [pick, *[o for o in gap.options if o is not pick]]
+    gap.suggest_reason = suggestion.reason
+
+
+NEGATIVE_WORDS = {
+    "no", "not", "don't", "dont", "never", "reject", "rejected", "block", "deny", "refuse",
+    "decline", "stop", "disallow", "ban",
+}  # fmt: skip
+YES_WORDS = {
+    "allow", "approve", "approved", "accept", "let", "ok", "okay", "fine", "pass", "flag",
+    "review", "check", "hold",
+}  # fmt: skip
+SUGGESTED_WORDS = {"suggested", "suggestion", "recommended", "you", "whatever", "default", "sure"}
+STOP_WORDS = {"it", "the", "a", "an", "to", "for", "of", "and", "or", "i", "we", "them", "that"}
+
+
+def match_option(gap: Gap, text: str) -> ChatOption | None:
+    """The choice a short typed reply means ("allow it", "reject", "you pick"), if clear."""
+    words = re.findall(r"[a-z$0-9,']+", text.lower())
+    if not words or len(words) > 10:
+        return None
+    by_value = {o.value: o for o in gap.options}
+    if SUGGESTED_WORDS & set(words) and not NEGATIVE_WORDS & set(words):
+        suggested = next((o for o in gap.options if o.suggested), None)
+        if suggested is not None:
+            return suggested
+    other = next((by_value[v] for v in ("allow", "review") if v in by_value), None)
+    if "block" in by_value and other is not None:
+        if NEGATIVE_WORDS & set(words):
+            return by_value["block"]
+        if YES_WORDS & set(words):
+            return other
+    if words[0] in ("yes", "yeah", "yep", "y") and len(gap.options) == 2:
+        return gap.options[0]
+    if words[0] in ("skip", "none") or words == ["no"]:
+        return by_value.get("skip")
+    # Otherwise the option whose wording overlaps most, if exactly one does.
+    content = set(words) - STOP_WORDS
+    scores = [
+        (len(content & (set(re.findall(r"[a-z$0-9,']+", o.label.lower())) - STOP_WORDS)), o)
+        for o in gap.options
+    ]
+    best = max((n for n, _ in scores), default=0)
+    winners = [o for n, o in scores if n == best]
+    return winners[0] if best > 0 and len(winners) == 1 else None
 
 
 # --- Session ------------------------------------------------------------------
@@ -388,6 +552,7 @@ def _summary(s: PolicySession, draft: PolicyDraft) -> str:
     phrases = {
         "question": ("needs a detail", "need a detail"),
         "exception": ("has an exception", "have exceptions"),
+        "narrow": ("is narrower than I can check", "are narrower than I can check"),
         "vague": ("is too vague to enforce", "are too vague to enforce"),
         "unsupported": ("isn't supported yet", "aren't supported yet"),
     }
@@ -432,25 +597,96 @@ def start_session(draft: PolicyDraft, source: str, grants: list[Ruleset]) -> Pol
     return s
 
 
+def _existing_cap(s: PolicySession, category: str) -> SpendRule | None:
+    return next(
+        (
+            r
+            for r in s.ruleset.rules
+            if r.rule_type == "per_item_cap" and (r.params.get("categories") or []) == [category]
+        ),
+        None,
+    )
+
+
+RULE_KEYS = (
+    "prohibited_categories",
+    "cap_cents",
+    "categories",
+    "threshold_cents",
+    "approver_role",
+    "merchants",
+)
+
+
+def _duplicate_of(s: PolicySession, rule: SpendRule) -> SpendRule | None:
+    """An existing rule that says the same thing (ignoring wording and action)."""
+    key = {k: rule.params.get(k) for k in RULE_KEYS}
+    return next(
+        (
+            r
+            for r in s.ruleset.rules
+            if r.id != rule.id
+            and r.rule_type == rule.rule_type
+            and {k: r.params.get(k) for k in RULE_KEYS} == key
+        ),
+        None,
+    )
+
+
 def _ask_next(s: PolicySession) -> None:
     gap = next((g for g in s.gaps if not g.resolved), None)
+    # A vague limit is already settled if that category has a cap (e.g. the user just
+    # chose to check "$350 per night" per charge); don't ask for a second, clashing one.
+    while gap is not None and gap.kind == "vague" and gap.category:
+        existing = _existing_cap(s, gap.category)
+        if existing is None:
+            break
+        gap.resolved = True
+        gap.auto = True
+        s.messages.append(
+            ChatMessage(
+                role="assistant",
+                text=(
+                    f'"{gap.quote}" (p. {gap.page}) is already covered: '
+                    f"{describe(existing)}. Skipping it."
+                ),
+            )
+        )
+        gap = next((g for g in s.gaps if not g.resolved), None)
     if gap is None:
-        n = len(s.ruleset.rules)
+        rules = "\n".join(f"• {describe(r)}" for r in s.ruleset.rules)
         gap = Gap(
             id="final",
             kind="final",
             prompt=(
-                f"That's everything. Your rulebook has {n} rules, each linked to your policy or to "
-                "an answer you gave here. Approve it so it starts checking expenses? You can also "
-                'type another rule, like "Gifts over $100 need the CEO\'s approval."'
+                f"That's everything. Here's your rulebook ({len(s.ruleset.rules)} rules):\n"
+                f"{rules}\n\n"
+                "Each one is linked to your policy or to an answer you gave here. Approve it so it "
+                'starts checking expenses? You can also type another rule, like "Gifts over $100 '
+                "need the CEO's approval.\""
             ),
             options=[ChatOption(label="Approve all rules", value="approve")],
         )
         s.gaps.append(gap)
+    # "(2 of 6)" so people know how much is left.
+    counted = [g for g in s.gaps if g.kind != "final"]
+    progress = (
+        f"({sum(g.resolved for g in counted) + 1} of {len(counted)}) "
+        if gap.kind != "final" and len(counted) > 1
+        else ""
+    )
+    why = ""
+    if gap.suggest_reason:
+        said = any(gap.suggest_reason in m.text for m in s.messages if m.role == "assistant")
+        why = (
+            "\nI'd go with the highlighted choice, for the same reason as before."
+            if said
+            else f"\nI'd go with the highlighted choice. {gap.suggest_reason}"
+        )
     s.messages.append(
         ChatMessage(
             role="assistant",
-            text=gap.prompt,
+            text=progress + gap.prompt + why,
             gap_id=gap.id,
             options=gap.options,
             free_text_hint=gap.free_text_hint or "Or type a new rule",
@@ -481,6 +717,8 @@ def _add_rule(s: PolicySession, item: dict[str, Any]) -> tuple[SpendRule, list[G
         )
         for q in questions
     ]
+    for gap in new_gaps:
+        _suggest(gap, s.ruleset.rules, s.pages)
     return rule, new_gaps
 
 
@@ -531,13 +769,21 @@ def reply(
         if cents is not None:
             value = str(cents)
 
+    typed_answer = False
+    if gap is not None and value is None and text and (choice := match_option(gap, text)):
+        value, typed_answer = choice.value, True
+
     if gap is not None and value is not None:
         option = next((o for o in gap.options if o.value == value), None)
         if option is None and not (gap.kind in ("vague", "missing") and value.isdigit()):
             raise ReplyError(f"'{value}' is not an option for this question")
         shown = option.label if option else format_cents(int(value))
-        s.messages.append(ChatMessage(role="user", text=shown, gap_id=gap.id))
+        s.messages.append(
+            ChatMessage(role="user", text=text if typed_answer else shown, gap_id=gap.id)
+        )
         confirmation = _resolve(s, gap, value, shown)
+        if typed_answer:
+            confirmation = f'I took that as "{shown}". {confirmation}'
         gap.resolved = True
         s.messages.append(ChatMessage(role="assistant", text=confirmation))
         if gap.kind != "final":
@@ -554,19 +800,43 @@ def reply(
     found = [f for f in found if f["quote"] in sentence]
     added: list[str] = []
     new_gaps: list[Gap] = []
+    duplicates: list[str] = []
     for item in found:
         result = _add_rule(s, item)
         if isinstance(result, str):
             continue
         rule, gaps = result
+        if (existing := _duplicate_of(s, rule)) is not None:
+            s.ruleset = s.ruleset.model_copy(
+                update={"rules": [r for r in s.ruleset.rules if r.id != rule.id]}
+            )
+            duplicates.append(describe(existing))
+            continue
         added.append(describe(rule))
         new_gaps.extend(gaps)
+    if duplicates:
+        s.messages.append(
+            ChatMessage(role="assistant", text="You already have: " + "; ".join(duplicates) + ".")
+        )
     s.gaps = [g for g in s.gaps if not (g.kind == "final" and not g.resolved)]
-    if added:
-        s.approved = False
+    if added or duplicates:
+        s.approved = s.approved and not added
         insert_at = next((i for i, g in enumerate(s.gaps) if not g.resolved), len(s.gaps))
         s.gaps[insert_at:insert_at] = new_gaps
-        s.messages.append(ChatMessage(role="assistant", text="Added: " + "; ".join(added) + "."))
+        if added:
+            s.messages.append(
+                ChatMessage(role="assistant", text="Added: " + "; ".join(added) + ".")
+            )
+    elif gap is not None:
+        s.messages.append(
+            ChatMessage(
+                role="assistant",
+                text=(
+                    "I didn't catch which choice you meant. Tap one of the choices, or type "
+                    'a new rule like "Meals up to $75".'
+                ),
+            )
+        )
     else:
         s.messages.append(
             ChatMessage(
@@ -587,7 +857,10 @@ def _resolve(s: PolicySession, gap: Gap, value: str, shown: str) -> str:
 
     if gap.kind == "question" and gap.rule_ids and gap.field:
         updated = [_update_rule(s, rid, {gap.field: value}, note) for rid in gap.rule_ids]
-        return "Got it: " + "; ".join(describe(r) for r in updated) + "."
+        if len(updated) == 1:
+            return f"Got it: {describe(updated[0])}.{example_line(updated[0])}"
+        lines = "\n".join(f"• {describe(r)}" for r in updated)
+        return f"Got it:\n{lines}\n{example_line(updated[0]).strip()}"
 
     if gap.kind == "question" and gap.rule_id and gap.field:
         rule = next(r for r in s.ruleset.rules if r.id == gap.rule_id)
@@ -600,10 +873,12 @@ def _resolve(s: PolicySession, gap: Gap, value: str, shown: str) -> str:
                 else "categories"
             )
             new = [value]
-        return f"Got it: {describe(_update_rule(s, gap.rule_id, {key: new}, note))}."
+        updated_rule = _update_rule(s, gap.rule_id, {key: new}, note)
+        return f"Got it: {describe(updated_rule)}.{example_line(updated_rule)}"
 
     if gap.kind == "exception" and gap.rule_id:
-        return f"Got it: {describe(_update_rule(s, gap.rule_id, {'action': value}, note))}."
+        updated_rule = _update_rule(s, gap.rule_id, {"action": value}, note)
+        return f"Got it: {describe(updated_rule)}.{example_line(updated_rule)}"
 
     if gap.kind == "conflict":
         return "Noted."
@@ -616,6 +891,28 @@ def _resolve(s: PolicySession, gap: Gap, value: str, shown: str) -> str:
 
     if value == "skip":
         return "OK, skipping that."
+
+    if gap.kind == "narrow" and gap.rule is not None:
+        rule = gap.rule.model_copy(
+            update={
+                "id": f"{s.session_id}_{len(s.ruleset.rules) + 1:02d}",
+                "params": {
+                    **gap.rule.params,
+                    "action": value,
+                    "clarifications": [
+                        *gap.rule.params.get("clarifications", []),
+                        {
+                            "question": (
+                                f"Applies to all {_scope(gap.rule)}, not just what the policy names"
+                            ),
+                            "answer": shown,
+                        },
+                    ],
+                },
+            }
+        )
+        s.ruleset = s.ruleset.model_copy(update={"rules": [*s.ruleset.rules, rule]})
+        return f"Done: {describe(rule)}.{example_line(rule)}"
 
     if gap.kind == "unsupported" and gap.quote and gap.page:
         result = _add_rule(
@@ -633,7 +930,7 @@ def _resolve(s: PolicySession, gap: Gap, value: str, shown: str) -> str:
             cents = parse_dollars_to_cents(gap.quote) or 0
             cat = label(gap.category or "expenses")
             page, sentence = _record(
-                s, f"Each {cat} charge over {format_cents(cents)} is sent for review."
+                s, f"Each {cat} charge over {format_cents(cents)} is flagged for review."
             )
             result = _add_rule(
                 s,
@@ -648,12 +945,13 @@ def _resolve(s: PolicySession, gap: Gap, value: str, shown: str) -> str:
         if isinstance(result, str):
             return f"I couldn't add that: {result}."
         rule, _ = result
-        return f"Done: {describe(rule)}."
+        return f"Done: {describe(rule)}.{example_line(rule)}"
 
     if gap.kind == "vague" and gap.category:
         cents = int(value)
         page, sentence = _record(
-            s, f"Each {label(gap.category)} charge over {format_cents(cents)} is sent for review."
+            s,
+            f"Each {label(gap.category)} charge over {format_cents(cents)} is flagged for review.",
         )
         result = _add_rule(
             s, _item("per_item_cap", page, sentence, categories=[gap.category], action="review")
@@ -667,7 +965,7 @@ def _resolve(s: PolicySession, gap: Gap, value: str, shown: str) -> str:
             {},
             {"question": f'Clarifies "{gap.quote}" (p. {gap.page})', "answer": shown},
         )
-        return f"Done: {describe(rule)}."
+        return f"Done: {describe(rule)}.{example_line(rule)}"
 
     if gap.id == "missing:receipts":
         cents = int(value)
@@ -678,7 +976,9 @@ def _resolve(s: PolicySession, gap: Gap, value: str, shown: str) -> str:
         )
         page, sentence = _record(s, sentence)
         result = _add_rule(s, _item("receipt_required", page, sentence))
-        return f"Done: {describe(result[0])}." if not isinstance(result, str) else result
+        if isinstance(result, str):
+            return result
+        return f"Done: {describe(result[0])}.{example_line(result[0])}"
 
     if gap.id == "missing:approvals":
         role, cents = value.split(":")
@@ -688,7 +988,9 @@ def _resolve(s: PolicySession, gap: Gap, value: str, shown: str) -> str:
         result = _add_rule(
             s, _item("approval_required", page, sentence, approver_role=role, action="review")
         )
-        return f"Done: {describe(result[0])}." if not isinstance(result, str) else result
+        if isinstance(result, str):
+            return result
+        return f"Done: {describe(result[0])}.{example_line(result[0])}"
 
     if gap.id == "missing:alcohol":
         sentence = (
@@ -700,7 +1002,9 @@ def _resolve(s: PolicySession, gap: Gap, value: str, shown: str) -> str:
         result = _add_rule(
             s, _item("category_prohibition", page, sentence, categories=["alcohol"], action=value)
         )
-        return f"Done: {describe(result[0])}." if not isinstance(result, str) else result
+        if isinstance(result, str):
+            return result
+        return f"Done: {describe(result[0])}.{example_line(result[0])}"
 
     return "Noted."
 

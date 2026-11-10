@@ -103,6 +103,15 @@ PAGES: list[list[tuple[str, str]]] = [
         ("Heading3", "Signatures"),
         ("BodyText", "Northfield Climate Foundation / Lakeview Research Collaborative"),
     ],
+    [
+        ("Heading3", "Exhibit B. Approved Budget"),
+        ("BodyText", "The approved budget for the period of performance is as follows."),
+        ("BodyText", "Personnel: $62,000"),
+        ("BodyText", "Domestic travel: $8,000"),
+        ("BodyText", "Equipment: $20,000"),
+        ("BodyText", "Supplies: $6,500"),
+        ("BodyText", "Total direct costs: $96,500"),
+    ],
 ]
 
 

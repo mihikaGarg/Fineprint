@@ -20,9 +20,9 @@ def test_cap_examples_show_real_engine_verdicts() -> None:
         _rule("per_item_cap", {"cap_cents": 7_500, "categories": ["meals"], "action": "review"})
     )
     assert [(e.description, e.verdict) for e in ex] == [
-        ("$67.50 expense", "ALLOWED"),
-        ("$75 expense (exactly the cap)", "ALLOWED"),
-        ("$90 expense", "NEEDS_REVIEW"),
+        ("$67.50 meal", "ALLOWED"),
+        ("$75 meal (exactly the limit)", "ALLOWED"),
+        ("$90 meal", "NEEDS_REVIEW"),
     ]
     assert ex[2].fix == "Allowed at $75 or less"
 

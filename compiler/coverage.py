@@ -13,7 +13,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
-from compiler.propose import SENTENCE_SPLIT_RE
+from compiler.sentences import split_sentences
 from contracts.models import Ruleset
 
 ClauseStatus = Literal["rule", "flagged", "rejected", "no_rule"]
@@ -43,21 +43,12 @@ def _norm(s: str) -> str:
 
 
 def _clauses(page_text: str) -> list[tuple[int, int, str]]:
-    """Sentence spans as (start, end, text), with exact offsets into the page."""
-    out: list[tuple[int, int, str]] = []
-    pos = 0
-    for part in SENTENCE_SPLIT_RE.split(page_text):
-        text = part.strip()
-        if not text:
-            continue
-        start = page_text.find(text, pos)
-        if start == -1:
-            continue
-        end = start + len(text)
-        pos = end
-        if len(text.split()) >= MIN_WORDS:
-            out.append((start, end, text))
-    return out
+    """Sentence spans as (start, end, text), with exact offsets; headings are left out."""
+    return [
+        (s.start, s.end, s.text)
+        for s in split_sentences(page_text)
+        if not s.heading and len(s.text.split()) >= MIN_WORDS
+    ]
 
 
 def _overlap(spans: list[tuple[int, int, int, str]], page: int, start: int, end: int) -> str | None:
