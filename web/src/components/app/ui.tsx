@@ -40,7 +40,7 @@ export function Button({ variant = "secondary", size = "md", className, ...props
         "disabled:cursor-not-allowed disabled:opacity-45",
         size === "sm" ? "px-2.5 py-1 text-[13px]" : "px-3.5 py-1.5 text-sm",
         variant === "primary" && "bg-ink text-paper hover:bg-accent hover:text-accent-ink",
-        variant === "secondary" && "border border-ink bg-paper-raised text-ink hover:bg-highlight hover:text-[#0e0e0d]",
+        variant === "secondary" && "border border-ink bg-paper-raised text-ink hover:bg-highlight hover:text-highlight-ink",
         variant === "quiet" && "px-0 text-ink-muted underline decoration-accent underline-offset-4 hover:text-ink",
         className,
       )}

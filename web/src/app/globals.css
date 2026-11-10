@@ -1,20 +1,23 @@
 @import "tailwindcss";
 
 /*
-  Identity: a press proof. Process inks instead of a SaaS palette: key black,
-  one magenta accent, highlighter yellow wherever a clause is quoted. Verdict
-  colors stay green / red / amber because finance people read those instantly.
+  Identity: a press proof, printed in the Ocean Breeze palette. Deep Twilight
+  (#03045e) is the ink, Bright Teal Blue (#0077b6) the accent, Frosted Blue
+  (#90e0ef) the highlighter on quoted clauses, a Light Cyan (#caf0f8) tint the
+  paper. Verdict colors stay green / red / amber so finance people read them
+  instantly.
 */
 :root {
-  --paper: #f1f0ea;
-  --paper-raised: #fbfaf6;
-  --ink: #0e0e0d;
-  --ink-muted: #5f5e58;
-  --rule: #d6d4ca;
-  --accent: #e2007a;
+  --paper: #f2fafc;
+  --paper-raised: #ffffff;
+  --ink: #03045e;
+  --ink-muted: #4d5e83;
+  --rule: #c4e3ec;
+  --accent: #0077b6;
   --accent-ink: #ffffff;
-  --highlight: #ffe53d;
-  --cyan: #0097d7;
+  --highlight: #90e0ef;
+  --highlight-ink: #03045e;
+  --cyan: #00b4d8;
   --allowed: #0a7a4a;
   --allowed-bg: #dcefe4;
   --blocked: #cf1d2c;
@@ -25,15 +28,16 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --paper: #0f0f10;
-    --paper-raised: #18181a;
-    --ink: #f1f0ea;
-    --ink-muted: #a3a29b;
-    --rule: #2d2d30;
-    --accent: #ff3fa4;
-    --accent-ink: #0f0f10;
-    --highlight: #ffe53d;
-    --cyan: #34b6ee;
+    --paper: #020330;
+    --paper-raised: #070a42;
+    --ink: #caf0f8;
+    --ink-muted: #8fb2c8;
+    --rule: #1b2464;
+    --accent: #00b4d8;
+    --accent-ink: #03045e;
+    --highlight: #90e0ef;
+    --highlight-ink: #03045e;
+    --cyan: #90e0ef;
     --allowed: #4fd296;
     --allowed-bg: #12291e;
     --blocked: #ff6b72;
@@ -52,6 +56,7 @@
   --color-accent: var(--accent);
   --color-accent-ink: var(--accent-ink);
   --color-highlight: var(--highlight);
+  --color-highlight-ink: var(--highlight-ink);
   --color-cyan: var(--cyan);
   --color-allowed: var(--allowed);
   --color-allowed-bg: var(--allowed-bg);
@@ -95,7 +100,7 @@ mark,
   background-size: 100% 72%;
   background-position: 0 70%;
   background-repeat: no-repeat;
-  color: #0e0e0d;
+  color: var(--highlight-ink);
   padding: 0 0.15em;
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
@@ -139,14 +144,15 @@ mark,
   background-size: 48px 48px;
 }
 
-/* Always-black panels (app sidebar, mission band): pin the inks in both themes. */
+/* Always-navy panels (app sidebar, mission band): pin the inks in both themes. */
 .press-black {
-  --paper: #f1f0ea;
-  --ink: #0b0b0c;
-  --accent: #ff3fa4;
-  --accent-ink: #0b0b0c;
-  background: #0b0b0c;
-  color: #f1f0ea;
+  --paper: #caf0f8;
+  --ink: #03045e;
+  --accent: #00b4d8;
+  --accent-ink: #03045e;
+  --highlight: #90e0ef;
+  background: #03045e;
+  color: #caf0f8;
 }
 
 summary::-webkit-details-marker {
