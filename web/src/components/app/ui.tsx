@@ -35,13 +35,13 @@ export function Button({ variant = "secondary", size = "md", className, ...props
     <button
       {...props}
       className={cx(
-        "inline-flex items-center justify-center gap-2 rounded-[3px] font-medium transition-colors",
-        "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink",
+        "inline-flex items-center justify-center gap-2 font-semibold transition-colors",
+        "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
         "disabled:cursor-not-allowed disabled:opacity-45",
         size === "sm" ? "px-2.5 py-1 text-[13px]" : "px-3.5 py-1.5 text-sm",
-        variant === "primary" && "bg-ink text-paper hover:bg-ink/85",
-        variant === "secondary" && "border border-ink/25 text-ink hover:border-ink",
-        variant === "quiet" && "px-0 text-ink-muted underline-offset-4 hover:text-ink hover:underline",
+        variant === "primary" && "bg-ink text-paper hover:bg-accent hover:text-accent-ink",
+        variant === "secondary" && "border border-ink bg-paper-raised text-ink hover:bg-highlight hover:text-[#0e0e0d]",
+        variant === "quiet" && "px-0 text-ink-muted underline decoration-accent underline-offset-4 hover:text-ink",
         className,
       )}
     />
@@ -63,9 +63,9 @@ export function Section({
   className?: string;
 }) {
   return (
-    <section className={cx("border-t border-ink pt-3", className)}>
+    <section className={cx("border-t border-ink bg-paper pt-3", className)}>
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
-        <h2 className="font-serif text-xl">{title}</h2>
+        <h2 className="font-display text-xl">{title}</h2>
         {aside}
       </div>
       {meta && <p className="mt-0.5 text-sm text-ink-muted">{meta}</p>}
@@ -77,7 +77,7 @@ export function Section({
 export function PageHeader({ title, children }: { title: string; children?: React.ReactNode }) {
   return (
     <header className="mb-8">
-      <h1 className="font-serif text-3xl">{title}</h1>
+      <h1 className="font-display text-[clamp(2rem,3.6vw,2.75rem)]">{title}</h1>
       {children && <p className="mt-2 max-w-[62ch] text-[15px] leading-relaxed text-ink-muted">{children}</p>}
     </header>
   );
@@ -100,8 +100,8 @@ export function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
     <input
       {...props}
       className={cx(
-        "rounded-[3px] border border-ink/20 bg-paper-raised px-2.5 py-1.5 text-sm text-ink",
-        "placeholder:text-ink-muted/70 focus:border-ink focus:outline-none",
+        "border border-ink/30 bg-paper-raised px-2.5 py-1.5 text-sm text-ink",
+        "placeholder:text-ink-muted/70 focus:border-accent focus:outline-none",
         props.className,
       )}
     />
@@ -119,7 +119,7 @@ export function Check({
 }) {
   return (
     <label className="inline-flex cursor-pointer items-center gap-2 text-sm">
-      <input type="checkbox" checked={checked} onChange={onChange} className="size-4 accent-[var(--ink)]" />
+      <input type="checkbox" checked={checked} onChange={onChange} className="size-4 accent-[var(--accent)]" />
       {children}
     </label>
   );
@@ -145,7 +145,7 @@ const TONE_DOT: Record<Tone, string> = {
 export function Mark({ tone, children }: { tone: Tone; children: React.ReactNode }) {
   return (
     <span className={cx("inline-flex shrink-0 items-center gap-1.5 text-sm font-medium", TONE_TEXT[tone])}>
-      <span aria-hidden className={cx("size-2 rounded-[1px]", TONE_DOT[tone])} />
+      <span aria-hidden className={cx("size-2", TONE_DOT[tone])} />
       {children}
     </span>
   );
@@ -169,9 +169,11 @@ export const OutcomeMark = ({ outcome }: { outcome: Outcome }) => (
 
 export function Clause({ quote, source }: { quote: string; source: string }) {
   return (
-    <figure className="border-l border-ink/30 pl-3">
-      <blockquote className="font-serif text-[15px] italic leading-snug text-ink/85">“{quote}”</blockquote>
-      <figcaption className="mt-1 text-xs text-ink-muted">{source}</figcaption>
+    <figure>
+      <blockquote className="text-[15px] leading-relaxed">
+        <mark>“{quote}”</mark>
+      </blockquote>
+      <figcaption className="mt-1 font-mono text-[10px] text-ink-muted">{source}</figcaption>
     </figure>
   );
 }
@@ -196,7 +198,7 @@ export function BudgetLines({ budget, onChange }: { budget: GrantBudget; onChang
               </span>
             </div>
             <div className="mt-1.5 h-1 bg-rule">
-              <div className={cx("h-full", pct > 90 ? "bg-blocked" : "bg-ink")} style={{ width: `${pct}%` }} />
+              <div className={cx("h-full", pct > 90 ? "bg-blocked" : "bg-accent")} style={{ width: `${pct}%` }} />
             </div>
             <div className="mt-1 flex flex-wrap justify-between gap-x-4 text-xs text-ink-muted">
               <span className="font-mono tabular-nums">
@@ -255,7 +257,7 @@ export function RuleRow({
   const r = card.rule;
   const proposed = r.status !== "approved";
   return (
-    <article className="grid gap-x-8 gap-y-3 border-b border-rule py-4 first:pt-0 last:border-b-0 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+    <article className="-mx-3 grid gap-x-8 gap-y-3 border-b border-rule px-3 py-4 transition-colors last:border-b-0 hover:bg-paper-raised md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
       <div className="min-w-0">
         <p className="font-medium leading-snug">{card.description}</p>
         {card.open_questions.length > 0 ? (
@@ -322,7 +324,7 @@ export function ExpenseTable({ items }: { items: LoggedExpense[] }) {
           {items.map(({ expense: e, result: r }) => {
             const issues = r.traces.filter((t) => t.outcome !== "PASS");
             return (
-              <tr key={e.id} className="border-b border-rule align-top">
+              <tr key={e.id} className="border-b border-rule align-top transition-colors hover:bg-highlight/20">
                 <td className="py-2.5 pr-4">
                   <div>{e.memo || e.merchant}</div>
                   <div className="mt-0.5 text-xs text-ink-muted">

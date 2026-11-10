@@ -72,7 +72,7 @@ export default function Overview() {
                   className={cx(
                     "text-sm",
                     i === next
-                      ? "rounded-[3px] bg-ink px-3 py-1 font-medium text-paper hover:bg-ink/85"
+                      ? "bg-accent px-3 py-1 font-semibold text-accent-ink hover:bg-ink hover:text-paper"
                       : "text-ink-muted underline-offset-4 hover:text-ink hover:underline",
                   )}
                 >
@@ -125,7 +125,7 @@ function Figure({ term, value, children }: { term: string; value: React.ReactNod
   return (
     <div className="border-b border-rule py-4 last:border-b-0 sm:border-b-0 sm:px-5 sm:first:pl-0">
       <dt className="text-sm text-ink-muted">{term}</dt>
-      <dd className="mt-1 font-mono text-2xl tabular-nums">{value}</dd>
+      <dd className="font-display mt-2 text-3xl tabular-nums">{value}</dd>
       <dd className="mt-1 text-sm text-ink-muted">{children}</dd>
     </div>
   );

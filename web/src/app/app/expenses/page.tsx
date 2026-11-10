@@ -156,7 +156,7 @@ export default function Expenses() {
               <select
                 value={form.category}
                 onChange={(e) => setForm({ ...form, category: e.target.value })}
-                className="rounded-[3px] border border-ink/20 bg-paper-raised px-2.5 py-1.5 text-sm capitalize focus:border-ink focus:outline-none"
+                className="border border-ink/30 bg-paper-raised px-2.5 py-1.5 text-sm capitalize focus:border-accent focus:outline-none"
               >
                 {categories.map((c) => (
                   <option key={c} value={c}>
@@ -295,7 +295,7 @@ function Result({ item }: { item: LoggedExpense }) {
   return (
     <div className={cx("mt-6 border-l-4 pl-4", RULE_COLOR[r.verdict])}>
       <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-        <span className="font-serif text-2xl">{verdictText(r.verdict)}</span>
+        <span className="font-display text-2xl">{verdictText(r.verdict)}</span>
         <span className="font-mono tabular-nums">{money(item.expense.amount_cents)}</span>
         <span className="capitalize text-ink-muted">{label(item.expense.category)}</span>
       </div>

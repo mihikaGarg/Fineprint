@@ -5,7 +5,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { post } from "@/lib/api";
 import { AppStateProvider, useAppState } from "@/lib/app-state";
-import { Button, cx } from "./ui";
+import { Wordmark } from "@/components/brand";
+import { cx } from "./ui";
 
 const NAV = [
   { href: "/app", label: "Overview" },
@@ -14,14 +15,6 @@ const NAV = [
   { href: "/app/rulebook", label: "Rulebook" },
   { href: "/app/expenses", label: "Expenses" },
 ] as const;
-
-function Wordmark() {
-  return (
-    <Link href="/" className="font-serif text-2xl tracking-tight">
-      Fine<span className="italic">print</span>
-    </Link>
-  );
-}
 
 function useBadges(): Record<string, string> {
   const { state } = useAppState();
@@ -42,19 +35,20 @@ function ResetButton() {
   const [confirming, setConfirming] = useState(false);
   const router = useRouter();
   const { refresh } = useAppState();
+  const quiet = "text-sm text-paper/60 underline-offset-4 hover:text-paper hover:underline";
   if (!confirming) {
     return (
-      <Button variant="quiet" size="sm" onClick={() => setConfirming(true)}>
+      <button type="button" className={quiet} onClick={() => setConfirming(true)}>
         Reset demo
-      </Button>
+      </button>
     );
   }
   return (
-    <div className="flex flex-wrap items-center gap-2 text-sm">
-      <span className="text-ink-muted">Clear everything?</span>
-      <Button
-        size="sm"
-        variant="primary"
+    <div className="flex flex-wrap items-center gap-3 text-sm">
+      <span className="text-paper/60">Clear everything?</span>
+      <button
+        type="button"
+        className="bg-accent px-2.5 py-1 font-semibold text-accent-ink"
         onClick={async () => {
           await post("/api/reset");
           setConfirming(false);
@@ -64,10 +58,10 @@ function ResetButton() {
         }}
       >
         Clear
-      </Button>
-      <Button size="sm" variant="quiet" onClick={() => setConfirming(false)}>
+      </button>
+      <button type="button" className={quiet} onClick={() => setConfirming(false)}>
         Cancel
-      </Button>
+      </button>
     </div>
   );
 }
@@ -89,8 +83,8 @@ function Nav() {
               "flex shrink-0 items-center justify-between gap-3 border-b-2 px-1 py-1.5 text-sm transition-colors",
               "lg:border-b-0 lg:border-l-2 lg:px-3",
               active
-                ? "border-ink font-medium text-ink"
-                : "border-transparent text-ink-muted hover:text-ink",
+                ? "border-accent font-semibold text-paper"
+                : "border-transparent text-paper/60 hover:border-paper/30 hover:text-paper",
             )}
           >
             {item.label}
@@ -98,7 +92,7 @@ function Nav() {
               <span
                 className={cx(
                   "font-mono text-xs font-normal tabular-nums",
-                  badge === "open" ? "text-review" : badge === "done" ? "text-allowed" : "text-ink-muted",
+                  badge === "open" ? "text-highlight" : badge === "done" ? "text-paper/60" : "text-paper/50",
                 )}
               >
                 {badge === "open" ? "open" : badge === "done" ? "done" : badge}
@@ -115,7 +109,7 @@ function Frame({ children }: { children: React.ReactNode }) {
   const { state, error } = useAppState();
   return (
     <div className="min-h-screen lg:grid lg:grid-cols-[15rem_1fr]">
-      <aside className="border-b border-rule px-4 pt-4 pb-2 lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col lg:border-b-0 lg:border-r lg:px-5 lg:py-6">
+      <aside className="press-black px-4 pt-4 pb-2 lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col lg:px-5 lg:py-6">
         <div className="mb-3 flex items-center justify-between lg:mb-8">
           <Wordmark />
           <div className="lg:hidden">
@@ -124,13 +118,13 @@ function Frame({ children }: { children: React.ReactNode }) {
         </div>
         <Nav />
         <div className="mt-auto hidden space-y-3 lg:block">
-          <p className="text-xs text-ink-muted">
+          <p className="font-mono text-[11px] text-paper/50">
             {state ? (state.llm_enabled ? "Reading with Claude" : "Reading offline, no API key") : ""}
           </p>
           <ResetButton />
         </div>
       </aside>
-      <main className="min-w-0 px-4 py-6 sm:px-8 lg:px-12 lg:py-10">
+      <main className="grid-sheet min-w-0 px-4 py-6 sm:px-8 lg:px-12 lg:py-10">
         <div className="max-w-5xl">
           {error && (
             <div className="mb-6 border-l-2 border-blocked py-1 pl-3 text-sm text-blocked">

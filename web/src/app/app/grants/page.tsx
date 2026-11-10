@@ -168,7 +168,13 @@ function GrantSection({ id }: { id: string }) {
               <Mark tone={STATUS[cl.status].tone}>{STATUS[cl.status].text}</Mark>
               <span className="font-mono text-xs leading-5 text-ink-muted">p. {cl.page}</span>
               <div className="min-w-0">
-                <span className="font-serif italic">{cl.text}</span>
+                {cl.status === "rule" ? (
+                  <mark>{cl.text}</mark>
+                ) : (
+                  <span className={cl.status === "rejected" ? "line-through decoration-blocked decoration-2" : "text-ink-muted"}>
+                    {cl.text}
+                  </span>
+                )}
                 {cl.detail && <p className="text-xs text-ink-muted">{cl.detail}</p>}
               </div>
             </div>

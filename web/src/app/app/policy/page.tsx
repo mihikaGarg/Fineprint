@@ -150,15 +150,15 @@ export default function Policy() {
       </PageHeader>
 
       <div className="grid gap-10 xl:grid-cols-[minmax(0,1fr)_20rem]">
-        <section className="flex h-[min(74vh,780px)] min-h-[460px] flex-col border-y border-ink">
+        <section className="flex h-[min(74vh,780px)] min-h-[460px] flex-col border-y border-ink bg-paper">
           <div className="flex items-baseline justify-between gap-4 border-b border-rule py-2.5">
-            <h2 className="truncate font-serif text-xl">{session ? session.name : "Setup conversation"}</h2>
+            <h2 className="font-display truncate text-lg">{session ? session.name : "Setup conversation"}</h2>
             <div className="flex shrink-0 items-center gap-3">
               <span className="text-sm text-ink-muted">{status}</span>
               {steps > 0 && !session?.approved && (
                 <span className="hidden h-1 w-24 bg-rule sm:block">
                   <span
-                    className="block h-full bg-ink"
+                    className="block h-full bg-accent"
                     style={{ width: `${onFinal ? 100 : ((step - 1) / steps) * 100}%` }}
                   />
                 </span>
@@ -241,7 +241,7 @@ export default function Policy() {
                     ? `Or type your answer, or a new rule`
                     : "Type a new rule"
               }
-              className="min-w-0 flex-1 rounded-[3px] border border-ink/20 bg-paper-raised px-2.5 py-1.5 text-sm placeholder:text-ink-muted/70 focus:border-ink focus:outline-none disabled:opacity-50"
+              className="min-w-0 flex-1 border border-ink/30 bg-paper-raised px-2.5 py-1.5 text-sm placeholder:text-ink-muted/70 focus:border-accent focus:outline-none disabled:opacity-50"
             />
             <Button type="submit" variant="primary" size="sm" disabled={!canType || !text.trim()}>
               Send
@@ -331,12 +331,12 @@ function Choice({
       <button
         type="button"
         onClick={onClick}
-        className="group grid w-full grid-cols-[1.5rem_minmax(0,1fr)] items-baseline gap-2 py-2.5 text-left text-[15px] hover:bg-paper-raised focus-visible:outline-2 focus-visible:outline-ink"
+        className="group grid w-full grid-cols-[1.5rem_minmax(0,1fr)] items-baseline gap-2 px-1 py-2.5 text-left text-[15px] transition-colors hover:bg-highlight/30 focus-visible:outline-2 focus-visible:outline-accent"
       >
-        <span className="font-mono text-sm text-ink-muted group-hover:text-ink">{letter}</span>
+        <span className="font-mono text-sm text-ink-muted group-hover:text-accent">{letter}</span>
         <span>
           {children}
-          {suggested && <span className="ml-2 text-sm text-allowed">Suggested</span>}
+          {suggested && <span className="ml-2 font-mono text-[10px] text-accent">suggested</span>}
         </span>
       </button>
     </li>
