@@ -82,7 +82,7 @@ def test_missing_action_becomes_a_multiple_choice_question() -> None:
     d = draft([rule("per_item_cap", "Meals up to $75.", categories=["meals"])])
     [q] = d.questions
     assert q.field == "action"
-    assert {o.value for o in q.options} == {"block", "review"}
+    assert {o.value for o in q.options} == {"block", "allow"}
 
 
 def test_model_questions_with_invalid_options_are_dropped() -> None:
@@ -119,13 +119,11 @@ def test_merchants_must_appear_in_the_quote() -> None:
 def test_answers_fill_fields_and_are_recorded() -> None:
     d = draft([rule("per_item_cap", "Meals up to $75.", categories=["meals"])])
     q = d.questions[0]
-    answered = apply_answers(d, {q.id: "review"})
+    answered = apply_answers(d, {q.id: "allow"})
     r = answered.ruleset.rules[0]
     assert answered.questions == []
-    assert r.params["action"] == "review"
-    assert r.params["clarifications"] == [
-        {"question": q.question, "answer": "Send it to someone to decide"}
-    ]
+    assert r.params["action"] == "allow"
+    assert r.params["clarifications"] == [{"question": q.question, "answer": "Approve it anyway"}]
 
 
 def test_answers_must_be_one_of_the_options() -> None:

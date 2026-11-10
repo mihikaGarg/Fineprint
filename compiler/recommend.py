@@ -86,9 +86,7 @@ def suggest_action(
     wording = " ".join(q for _, q in quotes)
     if rule_type == "per_item_cap":
         if SOFT_WORDS_RE.search(wording) and not FIRM_WORDS_RE.search(wording):
-            return Suggestion(
-                "review", "The limit is worded as a guideline, so a person should decide."
-            )
+            return Suggestion("review", "The limit is worded as a guideline, not a hard cap.")
         return Suggestion("block", "The limit is worded as a firm cap.")
     return Suggestion("block", "The policy says the approval is needed, not just preferred.")
 

@@ -79,12 +79,15 @@ def test_rulebook_respects_open_chat_questions_and_stays_in_sync() -> None:
     first = next(g for g in gaps if not g["resolved"])
     done = first["rule_id"] or first["rule_ids"][0]
     s = client.post(
-        f"/api/chat/{sid}/reply", json={"gap_id": first["id"], "value": "review"}
+        f"/api/chat/{sid}/reply",
+        json={"gap_id": first["id"], "value": first["options"][0]["value"]},
     ).json()
     client.post(f"/api/rulesets/{sid}/approve", json={"rule_ids": [done]})
     gaps = s["gaps"]
     nxt = next(g for g in gaps if not g["resolved"])
-    client.post(f"/api/chat/{sid}/reply", json={"gap_id": nxt["id"], "value": "review"})
+    client.post(
+        f"/api/chat/{sid}/reply", json={"gap_id": nxt["id"], "value": nxt["options"][0]["value"]}
+    )
     status = next(
         r["status"] for r in client.get(f"/api/rulesets/{sid}").json()["rules"] if r["id"] == done
     )

@@ -199,3 +199,12 @@ def test_company_approver_does_not_cover_grant_tier() -> None:
     assert [t.reason for t in result.traces if t.outcome != RuleOutcome.PASS] == [
         "$60,000 needs program officer approval"
     ]
+
+
+def test_approve_anyway_lets_it_through_with_a_note() -> None:
+    cap = _rule("per_item_cap", {"cap_cents": 7_500, "categories": ["meals"], "action": "allow"})
+    result = evaluate_expense(
+        _expense(9_000), Ruleset(grant_id="p", grant_name="P", rules=[cap]), BudgetState()
+    )
+    assert result.verdict == Verdict.ALLOWED
+    assert result.traces[0].reason == "$90 is over the $75 cap; the policy approves it anyway"

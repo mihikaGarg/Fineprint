@@ -47,7 +47,7 @@ def test_enterprise_policy_is_read_with_every_approval_tier() -> None:
     )
     # Each approval rule gets its own question, with choices naming its approver.
     labels = [o.label for g in s.gaps if g.field == "action" for o in g.options]
-    assert "Send them to the CFO to approve or reject" in labels
+    assert "Approve them anyway without CFO sign-off" in labels
     assert "Reject gifts of $100 or more without provost sign-off" in labels
 
 

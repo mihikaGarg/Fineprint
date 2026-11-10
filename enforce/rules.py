@@ -261,6 +261,13 @@ def evaluate_rule(
                 RuleOutcome.PASS,
                 f"{_format_cents(amount)} is within the {_format_cents(cap)} cap",
             )
+        if params.get("action") == "allow":
+            return _trace(
+                rule,
+                RuleOutcome.PASS,
+                f"{_format_cents(amount)} is over the {_format_cents(cap)} cap; "
+                "the policy approves it anyway",
+            )
         outcome = RuleOutcome.FAIL if params.get("action") == "block" else RuleOutcome.ESCALATE
         return _trace(
             rule,
@@ -288,6 +295,12 @@ def evaluate_rule(
                 RuleOutcome.PASS,
                 f"Covered by {_role_label(covering)} approval, "
                 f"which sits above {_role_label(role)}",
+            )
+        if params.get("action") == "allow":
+            return _trace(
+                rule,
+                RuleOutcome.PASS,
+                f"No {_role_label(role)} approval; the policy approves it anyway",
             )
         outcome = RuleOutcome.FAIL if params.get("action") == "block" else RuleOutcome.ESCALATE
         above = sorted(

@@ -66,10 +66,8 @@ def test_typed_reply_answers_the_open_question() -> None:
     gap = _open(s)
     s = reply(s, gap.id, None, "allow it")
     assert s.messages[-3].text == "allow it"
-    assert s.messages[-2].text.startswith(
-        'I took that as "Send meals over $75 to the finance team to approve"'
-    )
-    assert s.ruleset.rules[0].params["action"] == "review"
+    assert s.messages[-2].text.startswith('I took that as "Approve meals over $75 anyway"')
+    assert s.ruleset.rules[0].params["action"] == "allow"
 
 
 def test_typed_negative_and_you_pick() -> None:
@@ -88,24 +86,22 @@ def test_unclear_reply_asks_again_without_calling_it_a_rule() -> None:
     assert _open(s).id == gap.id
 
 
-def test_choices_name_the_rule_and_reviewer() -> None:
+def test_choices_are_reject_or_approve_in_the_rules_terms() -> None:
     s = _session({1: "Expenses of $1,000 or more need manager approval. Meals up to $75."})
-    meal = next(g for g in s.gaps if g.field == "action" and "meal" in g.prompt)
-    assert [o.label for o in meal.options] == [
-        "Reject any meal over $75",
-        "Send meals over $75 to the manager to approve",
+    labels = [[o.label for o in g.options] for g in s.gaps if g.field == "action"]
+    assert labels == [
+        [
+            "Reject expenses of $1,000 or more without manager sign-off",
+            "Approve them anyway without manager sign-off",
+        ],
+        ["Reject any meal over $75", "Approve meals over $75 anyway"],
     ]
-    s = reply(s, meal.id, "review", None)
-    assert "Meals over $75: sent to the manager to approve" in s.messages[-2].text
 
 
-def test_same_for_the_rest_answers_every_sibling() -> None:
-    s = _session(
-        {1: "Expenses of $1,000 or more need manager approval. Gifts need the CEO's approval."}
-    )
-    gap = _open(s)
-    rest = next(o for o in gap.options if o.value.endswith("+rest"))
-    assert rest.label == "Same for both approval rules (reject)"
-    s = reply(s, gap.id, rest.value, None)
-    approvals = [r for r in s.ruleset.rules if r.rule_type == "approval_required"]
-    assert {r.params["action"] for r in approvals} == {"block"}
+def test_exceptions_are_held_for_review_not_approved_blindly() -> None:
+    s = _session({1: "First class airfare is not allowed unless the flight exceeds six hours."})
+    gap = next(g for g in s.gaps if g.kind == "exception")
+    assert [o.label for o in gap.options] == [
+        "Hold each first-class flight for review to confirm the flight exceeds six hours",
+        "Reject all first-class flights, even when the flight exceeds six hours",
+    ]

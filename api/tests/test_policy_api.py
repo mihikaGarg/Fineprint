@@ -76,19 +76,19 @@ def test_policy_flow_draft_answer_approve_enforce() -> None:
     rs = client.post(f"/api/rulesets/{did}/approve", json={}).json()
     assert [r["status"] for r in rs["rules"]] == ["approved", "proposed", "approved"]
 
-    draft = client.post(f"/api/policy/{did}/answers", json={"answers": {q["id"]: "review"}}).json()
+    draft = client.post(f"/api/policy/{did}/answers", json={"answers": {q["id"]: "block"}}).json()
     assert draft["questions"] == []
     rs = client.post(f"/api/rulesets/{did}/approve", json={}).json()
     assert all(r["status"] == "approved" for r in rs["rules"])
 
     cards = client.get(f"/api/rulesets/{did}/cards").json()
     meal_card = next(c for c in cards if c["rule"]["rule_type"] == "per_item_cap")
-    assert [e["verdict"] for e in meal_card["examples"]] == ["ALLOWED", "ALLOWED", "NEEDS_REVIEW"]
+    assert [e["verdict"] for e in meal_card["examples"]] == ["ALLOWED", "ALLOWED", "BLOCKED"]
 
     # Check against the sample grant and the company policy together.
     body: dict[str, Any] = {"budget_state": {"lines": {}}, "ruleset_ids": ["grant_bbs_2026", did]}
     res = client.post("/api/enforce", json={**body, "expense": expense(9_000, "meals")}).json()
-    assert res["verdict"] == "NEEDS_REVIEW"
+    assert res["verdict"] == "BLOCKED"
     deciding = next(t for t in res["traces"] if t["outcome"] != "PASS")
     assert deciding["source"] == "policy" and deciding["fix"] == "Allowed at $75 or less"
 

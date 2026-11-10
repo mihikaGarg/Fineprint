@@ -40,7 +40,7 @@ def test_questions_name_the_situation() -> None:
     assert "What should happen when a meal costs more than $75?" in s.messages[-1].text
     assert [o.label for o in s.gaps[0].options] == [
         "Reject any meal over $75",
-        "Send meals over $75 to the finance team to approve",
+        "Approve meals over $75 anyway",
     ]
 
 
@@ -48,9 +48,9 @@ def test_progress_examples_and_final_recap() -> None:
     s = _session({1: "Meals up to $75. Gifts over $100 require the CEO's approval. No alcohol."})
     assert s.messages[-1].text.startswith("(1 of ")
     gap = next(g for g in s.gaps if not g.resolved)
-    s = reply(s, gap.id, "review", None)
+    s = reply(s, gap.id, "block", None)
     confirmation = s.messages[-2].text
-    assert "For example:" in confirmation and "→ sent to the finance team" in confirmation
+    assert "For example:" in confirmation and "→ not allowed" in confirmation
     assert s.messages[-1].text.startswith("(2 of ")
     s = _walk(s)
     recap = next(m.text for m in s.messages if m.text.startswith("That's everything"))

@@ -35,7 +35,7 @@ POLICY_RULE_TYPES = (
     "merchant_restriction",
     "receipt_required",
 )
-ACTIONS = ("block", "review")
+ACTIONS = ("block", "review", "allow")
 ROLE_RE = re.compile(r"^[a-z][a-z_]{1,39}$")
 PERIOD_LIMIT_RE = re.compile(
     r"\bper (day|night|trip|week|month|year)\b|\b(daily|weekly|monthly|annual)\b"
@@ -97,7 +97,7 @@ def action_question(rule_type: str, quote: str, params: dict[str, Any]) -> tuple
             f'"{quote}" What should happen when {one} costs more than {amount}?',
             [
                 Option(label="Reject it", value="block"),
-                Option(label="Send it to someone to decide", value="review"),
+                Option(label="Approve it anyway", value="allow"),
             ],
         )
     role = role_label(str(params.get("approver_role") or "the right person's"))
@@ -111,7 +111,7 @@ def action_question(rule_type: str, quote: str, params: dict[str, Any]) -> tuple
         f'"{quote}" What should happen if {situation}?',
         [
             Option(label=f"Reject it without {role} approval", value="block"),
-            Option(label="Send it to someone to decide", value="review"),
+            Option(label=f"Approve it anyway without {role} approval", value="allow"),
         ],
     )
 
