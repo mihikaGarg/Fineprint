@@ -83,7 +83,7 @@ export default function Home() {
 
       <main>
         {/* Hero */}
-        <section className="grid-sheet border-b border-ink">
+        <section className="border-b border-ink">
           <div className="mx-auto grid max-w-7xl gap-14 px-4 py-12 sm:px-6 lg:grid-cols-[1.15fr_1fr] lg:py-16">
             <div className="flex flex-col justify-center">
               <p className="font-mono text-xs text-ink-muted">Spend controls for grant-funded teams</p>

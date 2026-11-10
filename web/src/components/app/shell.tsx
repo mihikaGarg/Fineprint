@@ -124,7 +124,7 @@ function Frame({ children }: { children: React.ReactNode }) {
           <ResetButton />
         </div>
       </aside>
-      <main className="grid-sheet min-w-0 px-4 py-6 sm:px-8 lg:px-12 lg:py-10">
+      <main className="min-w-0 px-4 py-6 sm:px-8 lg:px-12 lg:py-10">
         <div className="max-w-5xl">
           {error && (
             <div className="mb-6 border-l-2 border-blocked py-1 pl-3 text-sm text-blocked">

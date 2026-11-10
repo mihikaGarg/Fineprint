@@ -136,14 +136,6 @@ mark,
     linear-gradient(var(--c), var(--c)) right 0 bottom 0 / 1px 9px no-repeat;
 }
 
-/* Faint layout grid, like a paste-up sheet. */
-.grid-sheet {
-  background-image:
-    linear-gradient(to right, color-mix(in srgb, var(--ink) 6%, transparent) 1px, transparent 1px),
-    linear-gradient(to bottom, color-mix(in srgb, var(--ink) 6%, transparent) 1px, transparent 1px);
-  background-size: 48px 48px;
-}
-
 /* Always-navy panels (app sidebar, mission band): pin the inks in both themes. */
 .press-black {
   --paper: #caf0f8;
