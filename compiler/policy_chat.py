@@ -168,6 +168,14 @@ def describe(rule: SpendRule) -> str:
         threshold = int(p.get("threshold_cents", 0))
         when = f"from {format_cents(threshold)}" if threshold else "on every expense"
         line = f"receipt needed {when}" + (f" ({cats})" if categories else "")
+    elif t == "period_of_performance":
+        line = f"only expenses dated {p.get('label') or 'within the award period'}"
+    elif t == "budget_limit":
+        line = f"must fit the {label(str(p.get('budget_line', '')))} budget line"
+    elif t == "threshold_approval":
+        what = label(str(p.get("category", "expenses")))
+        amount = format_cents(int(p.get("threshold_cents", 0)))
+        line = f"{what} from {amount} needs the sponsor's prior written approval"
     else:
         line = rule.name
     return line[:1].upper() + line[1:]

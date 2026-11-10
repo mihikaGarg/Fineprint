@@ -22,7 +22,7 @@ from compiler.policy import (
     draft_policy,
     draft_policy_pages,
 )
-from compiler.policy_chat import PolicySession, ReplyError, reply, start_session
+from compiler.policy_chat import PolicySession, ReplyError, describe, reply, start_session
 from compiler.policy_offline import read_policy
 from contracts.models import (
     KNOWN_CATEGORIES,
@@ -122,6 +122,7 @@ class ApproveRequest(BaseModel):
 
 class RuleCard(BaseModel):
     rule: SpendRule
+    description: str  # plain English, e.g. "Meals over $75: not allowed"
     examples: list[RuleExample]
     open_questions: list[Question]
     can_approve: bool
@@ -319,6 +320,7 @@ def ruleset_cards(ruleset_id: str) -> list[RuleCard]:
         cards.append(
             RuleCard(
                 rule=rule,
+                description=describe(rule),
                 examples=[] if open_qs else examples_for(rule),
                 open_questions=open_qs,
                 can_approve=not open_qs,

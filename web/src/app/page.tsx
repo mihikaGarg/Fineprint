@@ -76,7 +76,10 @@ export default function Home() {
       <header className="mx-auto flex max-w-6xl items-center justify-between px-4 py-5 sm:px-6">
         <Wordmark />
         <nav className="flex items-center gap-5 text-sm">
-          <a href="#studio" className="font-medium text-ink hover:underline">
+          <a href="/app" className="font-medium text-ink hover:underline">
+            Open the app
+          </a>
+          <a href="#studio" className="hidden text-ink-muted hover:text-ink sm:inline">
             Live Studio
           </a>
           <a href="#how" className="hidden text-ink-muted hover:text-ink sm:inline">
@@ -110,10 +113,16 @@ export default function Home() {
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <a
-                href="#studio"
+                href="/app"
                 className="rounded-full bg-ink px-6 py-3 text-sm font-medium text-paper hover:opacity-90"
               >
-                Launch Live Studio
+                Open the app
+              </a>
+              <a
+                href="#studio"
+                className="rounded-full border border-rule px-6 py-3 text-sm font-medium hover:border-ink"
+              >
+                Try the Live Studio
               </a>
               <a
                 href="#how"
