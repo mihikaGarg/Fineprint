@@ -44,13 +44,13 @@ function ResetButton() {
   const { refresh } = useAppState();
   if (!confirming) {
     return (
-      <Button variant="ghost" size="sm" onClick={() => setConfirming(true)}>
+      <Button variant="quiet" size="sm" onClick={() => setConfirming(true)}>
         Reset demo
       </Button>
     );
   }
   return (
-    <div className="flex items-center gap-2 text-sm">
+    <div className="flex flex-wrap items-center gap-2 text-sm">
       <span className="text-ink-muted">Clear everything?</span>
       <Button
         size="sm"
@@ -65,7 +65,7 @@ function ResetButton() {
       >
         Clear
       </Button>
-      <Button size="sm" variant="ghost" onClick={() => setConfirming(false)}>
+      <Button size="sm" variant="quiet" onClick={() => setConfirming(false)}>
         Cancel
       </Button>
     </div>
@@ -76,7 +76,7 @@ function Nav() {
   const pathname = usePathname();
   const badges = useBadges();
   return (
-    <nav className="flex gap-1 overflow-x-auto lg:flex-col">
+    <nav className="-mx-1 flex gap-3 overflow-x-auto [scrollbar-width:none] lg:mx-0 lg:flex-col lg:gap-0">
       {NAV.map((item) => {
         const active = pathname === item.href;
         const badge = badges[item.href];
@@ -84,21 +84,24 @@ function Nav() {
           <Link
             key={item.href}
             href={item.href}
+            aria-current={active ? "page" : undefined}
             className={cx(
-              "flex shrink-0 items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
-              active ? "bg-ink text-paper" : "text-ink-muted hover:bg-paper-raised hover:text-ink",
+              "flex shrink-0 items-center justify-between gap-3 border-b-2 px-1 py-1.5 text-sm transition-colors",
+              "lg:border-b-0 lg:border-l-2 lg:px-3",
+              active
+                ? "border-ink font-medium text-ink"
+                : "border-transparent text-ink-muted hover:text-ink",
             )}
           >
             {item.label}
             {badge && (
               <span
                 className={cx(
-                  "font-mono text-[11px] tabular-nums",
-                  badge === "open" && !active && "text-review",
-                  badge === "done" && !active && "text-allowed",
+                  "font-mono text-xs font-normal tabular-nums",
+                  badge === "open" ? "text-review" : badge === "done" ? "text-allowed" : "text-ink-muted",
                 )}
               >
-                {badge === "open" ? "●" : badge === "done" ? "✓" : badge}
+                {badge === "open" ? "open" : badge === "done" ? "done" : badge}
               </span>
             )}
           </Link>
@@ -112,8 +115,8 @@ function Frame({ children }: { children: React.ReactNode }) {
   const { state, error } = useAppState();
   return (
     <div className="min-h-screen lg:grid lg:grid-cols-[15rem_1fr]">
-      <aside className="border-b border-rule px-4 py-4 lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col lg:border-b-0 lg:border-r lg:px-5 lg:py-6">
-        <div className="mb-4 flex items-center justify-between lg:mb-8">
+      <aside className="border-b border-rule px-4 pt-4 pb-2 lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col lg:border-b-0 lg:border-r lg:px-5 lg:py-6">
+        <div className="mb-3 flex items-center justify-between lg:mb-8">
           <Wordmark />
           <div className="lg:hidden">
             <ResetButton />
@@ -121,16 +124,16 @@ function Frame({ children }: { children: React.ReactNode }) {
         </div>
         <Nav />
         <div className="mt-auto hidden space-y-3 lg:block">
-          <p className="font-mono text-[11px] uppercase tracking-wider text-ink-muted">
-            {state ? (state.llm_enabled ? "Claude reader on" : "Offline reader") : ""}
+          <p className="text-xs text-ink-muted">
+            {state ? (state.llm_enabled ? "Reading with Claude" : "Reading offline, no API key") : ""}
           </p>
           <ResetButton />
         </div>
       </aside>
-      <main className="min-w-0 px-4 py-8 sm:px-8 lg:px-12 lg:py-12">
-        <div className="mx-auto max-w-5xl">
+      <main className="min-w-0 px-4 py-6 sm:px-8 lg:px-12 lg:py-10">
+        <div className="max-w-5xl">
           {error && (
-            <div className="mb-6 rounded-xl border border-blocked/40 bg-blocked-bg px-4 py-3 text-sm text-blocked">
+            <div className="mb-6 border-l-2 border-blocked py-1 pl-3 text-sm text-blocked">
               {error}
             </div>
           )}

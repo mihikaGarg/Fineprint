@@ -5,6 +5,8 @@ import type { NextConfig } from "next";
 const API_URL = process.env.FINEPRINT_API_URL ?? "http://localhost:8000";
 
 const nextConfig: NextConfig = {
+  // The floating dev badge sits on top of the sidebar's Reset button.
+  devIndicators: false,
   async rewrites() {
     return [{ source: "/api/:path*", destination: `${API_URL}/api/:path*` }];
   },

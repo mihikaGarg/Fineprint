@@ -4,15 +4,15 @@ import { useCallback, useEffect, useState } from "react";
 import {
   BudgetLines,
   Button,
-  Card,
+  Check,
   Empty,
   ErrorText,
   ExpenseTable,
   Input,
-  Label,
   PageHeader,
+  Section,
+  Subhead,
   TraceRow,
-  VerdictPill,
   cx,
 } from "@/components/app/ui";
 import {
@@ -36,7 +36,7 @@ export default function Expenses() {
   const [categories, setCategories] = useState<string[]>([]);
   const [roles, setRoles] = useState<string[]>([]);
   const [form, setForm] = useState({
-    memo: "Dr. Lee · Earth Sciences · Boston hotel, 2 nights",
+    memo: "Dr. Lee, Earth Sciences: Boston hotel, 2 nights",
     amount: "640.00",
     category: "lodging",
     merchant: "Harborview Hotel Boston",
@@ -128,34 +128,35 @@ export default function Expenses() {
   return (
     <>
       <PageHeader title="Expenses">
-        Check an expense before it&apos;s paid. It&apos;s checked against every selected rulebook at
-        once, and allowed spend comes off the grant budget.
+        Check an expense before it&apos;s paid. It&apos;s run against every rulebook you tick, and if
+        it&apos;s allowed the amount comes off the grant&apos;s budget.
       </PageHeader>
 
       {state && !rulebooks.length && (
-        <div className="mb-6 rounded-xl border border-review/40 bg-review-bg px-4 py-3 text-sm text-review">
-          No approved rules yet. Add a grant or company policy and approve its rules first.
-        </div>
+        <p className="mb-8 border-l-2 border-review py-1 pl-3 text-sm">
+          No rules are approved yet. Add a grant or a company policy and approve its rules first.
+        </p>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
-        <Card title="Check an expense">
+      <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,20rem)]">
+        <Section title="Check an expense">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Description" className="sm:col-span-2">
               <Input value={form.memo} onChange={(e) => setForm({ ...form, memo: e.target.value })} />
             </Field>
-            <Field label="Amount ($)">
+            <Field label="Amount (USD)">
               <Input
                 inputMode="decimal"
                 value={form.amount}
                 onChange={(e) => setForm({ ...form, amount: e.target.value })}
+                className="font-mono"
               />
             </Field>
             <Field label="Category">
               <select
                 value={form.category}
                 onChange={(e) => setForm({ ...form, category: e.target.value })}
-                className="rounded-lg border border-rule bg-paper px-3 py-2 text-sm capitalize focus:border-ink focus:outline-none"
+                className="rounded-[3px] border border-ink/20 bg-paper-raised px-2.5 py-1.5 text-sm capitalize focus:border-ink focus:outline-none"
               >
                 {categories.map((c) => (
                   <option key={c} value={c}>
@@ -172,157 +173,154 @@ export default function Expenses() {
             </Field>
           </div>
 
-          <Label>Documentation and approvals</Label>
-          <div className="flex flex-wrap gap-2">
-            <Toggle on={form.receipt} onClick={() => setForm({ ...form, receipt: !form.receipt })}>
+          <Subhead>Paperwork</Subhead>
+          <div className="flex flex-wrap gap-x-6 gap-y-2">
+            <Check checked={form.receipt} onChange={() => setForm({ ...form, receipt: !form.receipt })}>
               Receipt attached
-            </Toggle>
-            <Toggle on={form.prior} onClick={() => setForm({ ...form, prior: !form.prior })}>
+            </Check>
+            <Check checked={form.prior} onChange={() => setForm({ ...form, prior: !form.prior })}>
               Sponsor&apos;s prior written approval
-            </Toggle>
-            {roles.map((r) => (
-              <Toggle key={r} on={approvals.has(r)} onClick={() => setApprovals(toggle(approvals, r))}>
-                Approved by {roleLabel(r)}
-              </Toggle>
-            ))}
+            </Check>
           </div>
+          {roles.length > 0 && (
+            <>
+              <Subhead>Signed off by</Subhead>
+              <div className="flex flex-wrap gap-x-6 gap-y-2">
+                {roles.map((r) => (
+                  <Check key={r} checked={approvals.has(r)} onChange={() => setApprovals(toggle(approvals, r))}>
+                    <span className="capitalize">{roleLabel(r)}</span>
+                  </Check>
+                ))}
+              </div>
+            </>
+          )}
 
-          <Label>Check against</Label>
+          <Subhead>Check against</Subhead>
           {rulebooks.length ? (
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-x-6 gap-y-2">
               {rulebooks.map((r) => (
-                <Toggle key={r.id} on={!unchecked.has(r.id)} onClick={() => setUnchecked(toggle(unchecked, r.id))}>
+                <Check key={r.id} checked={!unchecked.has(r.id)} onChange={() => setUnchecked(toggle(unchecked, r.id))}>
                   {r.name}
-                </Toggle>
+                </Check>
               ))}
             </div>
           ) : (
-            <p className="text-sm text-ink-muted">No approved rulebooks.</p>
+            <p className="text-sm text-ink-muted">No approved rulebooks yet.</p>
           )}
 
-          <div className="mt-6 flex flex-wrap items-center gap-3">
+          <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-rule pt-4">
             <Button variant="primary" disabled={!selected.length || busy} onClick={check}>
-              Check expense
+              Check this expense
             </Button>
             <Button disabled={!rulebooks.length || busy} onClick={runBatch}>
-              Run 16 sample expenses
+              Run the 16 sample expenses
             </Button>
             {error && <ErrorText>{error}</ErrorText>}
           </div>
 
           {result && <Result item={result} />}
-        </Card>
+        </Section>
 
-        <Card title="Grant budgets">
+        <Section title="Grant budgets">
           {state?.budgets.length ? (
-            <div className="space-y-8">
+            <div className="space-y-6">
               {state.budgets.map((b) => (
                 <div key={b.grant_id}>
-                  {state.budgets.length > 1 && <h3 className="mb-3 font-medium">{b.name}</h3>}
+                  {state.budgets.length > 1 && <h3 className="mb-2 text-sm font-semibold">{b.name}</h3>}
                   <BudgetLines budget={b} onChange={refresh} />
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-sm text-ink-muted">Add a grant to see its budget.</p>
+            <Empty>Add a grant to see its budget.</Empty>
           )}
-        </Card>
+        </Section>
       </div>
 
-      <Card title="History" className="mt-6">
-        <div className="mb-4 flex flex-wrap gap-2">
+      <Section title="History" className="mt-12">
+        <div className="mb-3 flex flex-wrap gap-x-5 border-b border-rule" role="tablist">
           {(["ALL", "ALLOWED", "NEEDS_REVIEW", "BLOCKED"] as Filter[]).map((k) => (
-            <Toggle key={k} on={filter === k} onClick={() => setFilter(k)}>
-              {k === "ALL" ? "All" : verdictText(k)} <span className="font-mono tabular-nums opacity-70">{counts[k]}</span>
-            </Toggle>
+            <button
+              key={k}
+              type="button"
+              role="tab"
+              aria-selected={filter === k}
+              onClick={() => setFilter(k)}
+              className={cx(
+                "-mb-px border-b-2 pb-2 text-sm",
+                filter === k ? "border-ink font-medium text-ink" : "border-transparent text-ink-muted hover:text-ink",
+              )}
+            >
+              {k === "ALL" ? "All" : verdictText(k)}{" "}
+              <span className="font-mono text-xs tabular-nums text-ink-muted">{counts[k]}</span>
+            </button>
           ))}
         </div>
         {shown.length ? <ExpenseTable items={shown} /> : <Empty>Nothing here yet.</Empty>}
-      </Card>
+      </Section>
     </>
   );
 }
 
 function Field({ label, className, children }: { label: string; className?: string; children: React.ReactNode }) {
   return (
-    <label className={cx("grid gap-1.5", className)}>
+    <label className={cx("grid gap-1", className)}>
       <span className="text-sm text-ink-muted">{label}</span>
       {children}
     </label>
   );
 }
 
-function Toggle({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      aria-pressed={on}
-      onClick={onClick}
-      className={cx(
-        "rounded-full border px-3 py-1.5 text-sm transition-colors",
-        on ? "border-ink bg-ink text-paper" : "border-rule text-ink-muted hover:border-ink hover:text-ink",
-      )}
-    >
-      {children}
-    </button>
-  );
-}
+const RULE_COLOR: Record<Verdict, string> = {
+  ALLOWED: "border-allowed",
+  BLOCKED: "border-blocked",
+  NEEDS_REVIEW: "border-review",
+};
 
 function Result({ item }: { item: LoggedExpense }) {
   const { state } = useAppState();
   const r = item.result;
   const issues = r.traces.filter((t) => t.outcome !== "PASS");
-  const [showAll, setShowAll] = useState(false);
   const grants = item.ruleset_ids.filter((id) => state?.rulesets.find((x) => x.id === id)?.kind === "grant");
   const spendNote = item.spent_on
-    ? `Spend recorded on ${label(item.spent_on)}.`
+    ? `Charged to ${label(item.spent_on)}.`
     : r.verdict !== "ALLOWED"
-      ? "No spend recorded."
+      ? "Nothing was charged to the budget."
       : grants.length > 1
-        ? "Spend not recorded: it was checked against several grants, so select only the grant it's charged to."
+        ? "Not charged: it was checked against more than one grant. Tick only the grant it belongs to."
         : !grants.length
-          ? "Spend not recorded: no grant was checked."
-          : "Spend not recorded: this grant has no budget line for that category.";
+          ? "Not charged: no grant was ticked."
+          : "Not charged: this grant has no budget line for that category.";
 
   return (
-    <div
-      className={cx(
-        "mt-6 rounded-xl border p-4",
-        r.verdict === "ALLOWED" && "border-allowed/40 bg-allowed-bg/40",
-        r.verdict === "BLOCKED" && "border-blocked/40 bg-blocked-bg/40",
-        r.verdict === "NEEDS_REVIEW" && "border-review/40 bg-review-bg/40",
-      )}
-    >
-      <div className="flex flex-wrap items-center gap-3">
-        <VerdictPill verdict={r.verdict} />
-        <span className="font-mono text-lg tabular-nums">{money(item.expense.amount_cents)}</span>
+    <div className={cx("mt-6 border-l-4 pl-4", RULE_COLOR[r.verdict])}>
+      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+        <span className="font-serif text-2xl">{verdictText(r.verdict)}</span>
+        <span className="font-mono tabular-nums">{money(item.expense.amount_cents)}</span>
         <span className="capitalize text-ink-muted">{label(item.expense.category)}</span>
       </div>
-      <p className="mt-2 text-sm text-ink-muted">
-        Checked {r.traces.length} rules from {item.ruleset_ids.length} rulebook
-        {item.ruleset_ids.length === 1 ? "" : "s"} in {r.latency_ms} ms. {spendNote}
+      <p className="mt-1 text-sm text-ink-muted">
+        {r.traces.length} rules applied, from {item.ruleset_ids.length} rulebook
+        {item.ruleset_ids.length === 1 ? "" : "s"}, in {r.latency_ms} ms. {spendNote}
       </p>
-      <div className="mt-3">
+      <div className="mt-3 border-t border-rule">
         {issues.length ? (
           issues.map((t) => <TraceRow key={t.rule_id} trace={t} />)
         ) : (
-          <p className="text-sm">Every applicable rule passed.</p>
+          <p className="py-3 text-sm">Every rule that applies passed.</p>
         )}
       </div>
-      <button
-        type="button"
-        onClick={() => setShowAll(!showAll)}
-        className="mt-2 text-sm text-ink-muted underline-offset-2 hover:text-ink hover:underline"
-      >
-        {showAll ? "Hide" : "Show"} all {r.traces.length} rules checked
-      </button>
-      {showAll && (
-        <div className="mt-2">
+      <details className="group mt-1">
+        <summary className="cursor-pointer list-none py-1 text-sm text-ink-muted hover:text-ink">
+          <span className="inline-block w-3 transition-transform group-open:rotate-90">›</span>
+          All {r.traces.length} rules applied
+        </summary>
+        <div className="border-t border-rule">
           {r.traces.map((t) => (
             <TraceRow key={t.rule_id} trace={t} />
           ))}
         </div>
-      )}
+      </details>
     </div>
   );
 }

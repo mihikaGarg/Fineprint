@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { BudgetLines, Card, Empty, ExpenseTable, PageHeader, cx } from "@/components/app/ui";
+import { BudgetLines, Empty, ExpenseTable, PageHeader, Section, cx } from "@/components/app/ui";
 import { api, type LoggedExpense } from "@/lib/api";
 import { useAppState } from "@/lib/app-state";
 
@@ -23,13 +23,13 @@ export default function Overview() {
   const steps = [
     {
       title: "Add a grant agreement",
-      body: "Fineprint reads it into rules, each tied to its clause and page.",
+      body: "Each clause that limits spending becomes a rule, quoted with its page.",
       done: grants.length > 0,
       href: "/app/grants",
     },
     {
       title: "Set up your company policy",
-      body: "Upload your expense policy. The assistant fills the gaps with you.",
+      body: "Upload your expense policy and answer the questions it leaves open.",
       done: policies.length > 0 && !policies.some((p) => p.open_items),
       href: "/app/policy",
     },
@@ -41,7 +41,7 @@ export default function Overview() {
     },
     {
       title: "Check expenses",
-      body: "Every expense is checked against the grant and your policy at once.",
+      body: "Each expense is checked against the grant and your policy together.",
       done: state.expenses_checked > 0,
       href: "/app/expenses",
     },
@@ -50,86 +50,83 @@ export default function Overview() {
 
   return (
     <>
-      <PageHeader title="Overview">Every dollar, cleared by the clause.</PageHeader>
+      <PageHeader title="Overview" />
 
-      <div className="grid gap-6">
-        <Card title="Get set up">
-          <ol className="divide-y divide-rule">
+      <div className="grid gap-10">
+        <Section title="Setup">
+          <ol>
             {steps.map((s, i) => (
-              <li key={s.title} className="flex items-center gap-4 py-3 first:pt-0 last:pb-0">
-                <span
-                  className={cx(
-                    "grid size-8 shrink-0 place-items-center rounded-full font-mono text-sm",
-                    s.done ? "bg-allowed-bg text-allowed" : "border border-rule text-ink-muted",
-                  )}
-                >
-                  {s.done ? "✓" : i + 1}
+              <li
+                key={s.title}
+                className="grid grid-cols-[2rem_minmax(0,1fr)_auto] items-baseline gap-x-3 border-b border-rule py-3 first:pt-0 last:border-b-0"
+              >
+                <span className={cx("font-mono text-sm", s.done ? "text-allowed" : "text-ink-muted")}>
+                  {s.done ? "✓" : `${i + 1}.`}
                 </span>
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium">{s.title}</p>
+                <div>
+                  <p className={cx("font-medium", s.done && "text-ink-muted")}>{s.title}</p>
                   <p className="text-sm text-ink-muted">{s.body}</p>
                 </div>
                 <Link
                   href={s.href}
                   className={cx(
-                    "shrink-0 rounded-lg px-3 py-1.5 text-sm font-medium",
-                    i === next ? "bg-ink text-paper" : "border border-rule hover:bg-paper",
+                    "text-sm",
+                    i === next
+                      ? "rounded-[3px] bg-ink px-3 py-1 font-medium text-paper hover:bg-ink/85"
+                      : "text-ink-muted underline-offset-4 hover:text-ink hover:underline",
                   )}
                 >
-                  {s.done ? "Open" : "Start"}
+                  {s.done ? "Open" : i === next ? "Start" : "Go"}
                 </Link>
               </li>
             ))}
           </ol>
-        </Card>
+        </Section>
 
-        <div className="grid gap-4 sm:grid-cols-3">
-          <Stat label="Rulebooks" value={state.rulesets.length}>
-            {grants.length} grant · {policies.length} policy
-          </Stat>
-          <Stat label="Rules approved" value={`${approved}/${total}`}>
-            only approved rules are enforced
-          </Stat>
-          <Stat label="Expenses checked" value={state.expenses_checked}>
-            <span className="text-allowed">{state.verdicts.ALLOWED} allowed</span> ·{" "}
-            <span className="text-review">{state.verdicts.NEEDS_REVIEW} review</span> ·{" "}
+        <dl className="grid grid-cols-1 border-y border-ink sm:grid-cols-3 sm:divide-x sm:divide-rule">
+          <Figure term="Rulebooks" value={state.rulesets.length}>
+            {grants.length} grant, {policies.length} company policy
+          </Figure>
+          <Figure term="Rules approved" value={`${approved} of ${total}`}>
+            Only approved rules are enforced
+          </Figure>
+          <Figure term="Expenses checked" value={state.expenses_checked}>
+            <span className="text-allowed">{state.verdicts.ALLOWED} allowed</span>,{" "}
+            <span className="text-review">{state.verdicts.NEEDS_REVIEW} to review</span>,{" "}
             <span className="text-blocked">{state.verdicts.BLOCKED} blocked</span>
-          </Stat>
+          </Figure>
+        </dl>
+
+        <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,20rem)]">
+          <Section title="Recent decisions">
+            {log.length ? <ExpenseTable items={log.slice(0, 6)} /> : <Empty>No expenses checked yet.</Empty>}
+          </Section>
+          <Section title="Grant budgets">
+            {state.budgets.length ? (
+              <div className="space-y-6">
+                {state.budgets.map((b) => (
+                  <div key={b.grant_id}>
+                    {state.budgets.length > 1 && <h3 className="mb-2 text-sm font-semibold">{b.name}</h3>}
+                    <BudgetLines budget={b} onChange={refresh} />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <Empty>Add a grant to see its budget.</Empty>
+            )}
+          </Section>
         </div>
-
-        <Card title="Grant budgets">
-          {state.budgets.length ? (
-            <div className="space-y-8">
-              {state.budgets.map((b) => (
-                <div key={b.grant_id}>
-                  {state.budgets.length > 1 && <h3 className="mb-3 font-medium">{b.name}</h3>}
-                  <BudgetLines budget={b} onChange={refresh} />
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-ink-muted">Add a grant to see its budget.</p>
-          )}
-        </Card>
-
-        <Card title="Recent decisions">
-          {log.length ? (
-            <ExpenseTable items={log.slice(0, 6)} />
-          ) : (
-            <Empty>No expenses checked yet.</Empty>
-          )}
-        </Card>
       </div>
     </>
   );
 }
 
-function Stat({ label, value, children }: { label: string; value: React.ReactNode; children: React.ReactNode }) {
+function Figure({ term, value, children }: { term: string; value: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border border-rule bg-paper-raised p-5">
-      <p className="font-mono text-[11px] uppercase tracking-wider text-ink-muted">{label}</p>
-      <p className="mt-2 font-serif text-4xl tabular-nums">{value}</p>
-      <p className="mt-1 text-sm text-ink-muted">{children}</p>
+    <div className="border-b border-rule py-4 last:border-b-0 sm:border-b-0 sm:px-5 sm:first:pl-0">
+      <dt className="text-sm text-ink-muted">{term}</dt>
+      <dd className="mt-1 font-mono text-2xl tabular-nums">{value}</dd>
+      <dd className="mt-1 text-sm text-ink-muted">{children}</dd>
     </div>
   );
 }

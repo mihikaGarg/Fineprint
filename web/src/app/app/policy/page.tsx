@@ -1,19 +1,23 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Button, Card, Clause, PageHeader, Pill, cx } from "@/components/app/ui";
+import { Button, Clause, PageHeader, Section, cx } from "@/components/app/ui";
 import { api, post, type ChatOption, type PolicySession, type RuleCard } from "@/lib/api";
 import { useAppState } from "@/lib/app-state";
 
-interface Bubble {
+interface Line {
   role: "assistant" | "user";
   text: string;
 }
 
+// "(4 of 13) ..." moves out of the message and into the progress line.
+const PROGRESS = /^\((\d+) of (\d+)\) /;
+const LETTERS = "ABCDEFGH";
+
 export default function Policy() {
   const { state, refresh } = useAppState();
   const [session, setSession] = useState<PolicySession | null>(null);
-  const [pending, setPending] = useState<Bubble[]>([]);
+  const [pending, setPending] = useState<Line[]>([]);
   const [typing, setTyping] = useState(false);
   const [typedStart, setTypedStart] = useState(false);
   const [text, setText] = useState("");
@@ -41,8 +45,10 @@ export default function Policy() {
     if (session) void loadCards(session.session_id);
   }, [session, loadCards]);
 
+  // Keep the newest message and its choices in view.
   useEffect(() => {
-    log.current?.scrollTo({ top: log.current.scrollHeight, behavior: "smooth" });
+    const el = log.current;
+    if (el) el.scrollTop = el.scrollHeight;
   }, [session, pending, typing]);
 
   async function run(shown: string, request: () => Promise<PolicySession>) {
@@ -50,14 +56,14 @@ export default function Policy() {
     setPending([{ role: "user", text: shown }]);
     setTyping(true);
     try {
-      const [next] = await Promise.all([request(), new Promise((r) => setTimeout(r, 350))]);
+      const [next] = await Promise.all([request(), new Promise((r) => setTimeout(r, 300))]);
       setSession(next);
       setPending([]);
       void refresh();
     } catch (e) {
       setPending([
         { role: "user", text: shown },
-        { role: "assistant", text: `Sorry, that didn't work: ${(e as Error).message}` },
+        { role: "assistant", text: `That didn't work: ${(e as Error).message}` },
       ]);
     } finally {
       setTyping(false);
@@ -95,10 +101,7 @@ export default function Policy() {
       return;
     }
     void run(value, () =>
-      post<PolicySession>(`/api/chat/${session.session_id}/reply`, {
-        gap_id: openGap?.gap_id ?? null,
-        text: value,
-      }),
+      post<PolicySession>(`/api/chat/${session.session_id}/reply`, { gap_id: openGap?.gap_id ?? null, text: value }),
     );
   }
 
@@ -112,113 +115,118 @@ export default function Policy() {
     }
   }
 
-  const welcome: Bubble = {
+  const welcome: Line = {
     role: "assistant",
     text:
-      "Hi! Let's set up your company's expense rules.\n\nUpload your expense policy (PDF or text) and I'll read it into rules, each linked to the page it came from. Then we'll go through anything vague, missing or with exceptions, one question at a time." +
+      "Send me your expense policy as a PDF or text file. I'll turn each spending rule into a rule you can check, quoted with its page, then ask you about anything vague, missing or with an exception, one question at a time." +
       (grants.length
-        ? `\n\nI'll also check it against your grant: ${grants.map((g) => g.name).join(", ")}.`
-        : "\n\nTip: add a grant first and I'll flag where it's stricter than your policy."),
+        ? `\n\nI'll also compare it with ${grants.map((g) => g.name).join(", ")}.`
+        : "\n\nIf you add a grant first, I'll point out where the grant is stricter than your policy."),
   };
-  const bubbles: Bubble[] = [...(session ? session.messages : [welcome]), ...pending];
+  const lines: Line[] = [...(session ? session.messages : [welcome]), ...pending].map((b) => ({
+    ...b,
+    text: b.text.replace(PROGRESS, ""),
+  }));
+  const progress = [...(session?.messages ?? [])].reverse().map((m) => PROGRESS.exec(m.text)).find(Boolean);
+  const step = progress ? Number(progress[1]) : 0;
+  const steps = progress ? Number(progress[2]) : 0;
+  const onFinal = openGap?.gap_id === "final";
+  const status = !session
+    ? "Not started"
+    : session.approved
+      ? "Rulebook approved"
+      : onFinal
+        ? "All questions answered. Review and approve."
+        : steps
+          ? `Question ${step} of ${steps}`
+          : "Reading";
   const canType = !typing && (!!session || typedStart);
 
   return (
     <>
       <PageHeader title="Company policy">
-        Upload your existing expense policy. The assistant reads it into rules, then walks you
-        through anything vague, missing or with exceptions.
+        Most of a policy can be read straight into rules. The rest, like limits with no amount or
+        rules with exceptions, needs a decision from you.
       </PageHeader>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
-        <section className="flex h-[min(72vh,760px)] min-h-[480px] flex-col overflow-hidden rounded-2xl border border-rule bg-paper-raised">
-          <div ref={log} className="flex-1 space-y-3 overflow-y-auto p-4 sm:p-6">
-            {bubbles.map((b, i) => (
-              <div
-                key={i}
-                className={cx(
-                  "max-w-[85%] whitespace-pre-line rounded-2xl px-4 py-3 text-[15px] leading-relaxed",
-                  b.role === "user"
-                    ? "ml-auto rounded-br-md bg-ink text-paper"
-                    : "rounded-bl-md border border-rule bg-paper",
-                )}
-              >
-                {b.text}
+      <div className="grid gap-10 xl:grid-cols-[minmax(0,1fr)_20rem]">
+        <section className="flex h-[min(74vh,780px)] min-h-[460px] flex-col border-y border-ink">
+          <div className="flex items-baseline justify-between gap-4 border-b border-rule py-2.5">
+            <h2 className="truncate font-serif text-xl">{session ? session.name : "Setup conversation"}</h2>
+            <div className="flex shrink-0 items-center gap-3">
+              <span className="text-sm text-ink-muted">{status}</span>
+              {steps > 0 && !session?.approved && (
+                <span className="hidden h-1 w-24 bg-rule sm:block">
+                  <span
+                    className="block h-full bg-ink"
+                    style={{ width: `${onFinal ? 100 : ((step - 1) / steps) * 100}%` }}
+                  />
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div ref={log} className="flex-1 overflow-y-auto py-4 pr-2">
+            {lines.map((b, i) => (
+              <div key={i} className="grid grid-cols-[4.5rem_minmax(0,1fr)] gap-3 py-2">
+                <span className={cx("pt-px text-xs", b.role === "user" ? "font-medium text-ink" : "text-ink-muted")}>
+                  {b.role === "user" ? "You" : "Fineprint"}
+                </span>
+                <p
+                  className={cx(
+                    "max-w-[68ch] whitespace-pre-line text-[15px] leading-relaxed",
+                    b.role === "user" && "font-medium",
+                  )}
+                >
+                  {b.text}
+                </p>
               </div>
             ))}
             {typing && (
-              <div className="w-fit rounded-2xl rounded-bl-md border border-rule bg-paper px-4 py-3">
-                <span className="inline-flex gap-1">
-                  {[0, 1, 2].map((d) => (
-                    <span
-                      key={d}
-                      className="size-1.5 animate-bounce rounded-full bg-ink-muted"
-                      style={{ animationDelay: `${d * 120}ms` }}
-                    />
-                  ))}
-                </span>
+              <div className="grid grid-cols-[4.5rem_minmax(0,1fr)] gap-3 py-2">
+                <span className="text-xs text-ink-muted">Fineprint</span>
+                <p className="text-sm text-ink-muted">Writing…</p>
               </div>
             )}
             {!typing && !pending.length && !session && (
-              <div className="flex flex-wrap gap-2 pt-1">
-                <Button variant="primary" onClick={() => file.current?.click()}>
-                  Upload policy
-                </Button>
-                <Button
+              <Choices>
+                <Choice letter="A" onClick={() => file.current?.click()}>
+                  Upload my policy (PDF, .txt or .md)
+                </Choice>
+                <Choice
+                  letter="B"
                   onClick={() => {
                     const fd = new FormData();
                     fd.append("sample", "northwind");
                     fd.append("name", "Northwind University FIN-204");
-                    start(fd, "Use the sample: Northwind University travel & expense policy (5 pages)");
+                    start(fd, "Use the sample: Northwind University travel and expense policy");
                   }}
                 >
-                  Use a sample policy
-                </Button>
-                <Button
+                  Use the sample: Northwind University travel and expense policy, 5 pages
+                </Choice>
+                <Choice
+                  letter="C"
                   onClick={() => {
                     setTypedStart(true);
                     setTimeout(() => input.current?.focus(), 0);
                   }}
                 >
-                  Type rules instead
-                </Button>
-              </div>
+                  Type a few rules instead
+                </Choice>
+              </Choices>
             )}
             {!typing && !pending.length && openGap && openGap.options.length > 0 && (
-              <div className="flex flex-col items-start gap-2 pt-1">
-                {openGap.options.map((o) => (
-                  <button
-                    key={o.value}
-                    type="button"
-                    onClick={() => choose(o)}
-                    className={cx(
-                      "max-w-full rounded-xl border px-4 py-2 text-left text-sm transition-colors",
-                      o.suggested || o.value === "approve"
-                        ? "border-ink bg-ink text-paper hover:bg-ink/85"
-                        : "border-rule bg-paper-raised hover:border-ink",
-                    )}
-                  >
-                    {o.suggested && (
-                      <span className="mr-2 font-mono text-[10px] uppercase tracking-wider opacity-70">
-                        Suggested
-                      </span>
-                    )}
+              <Choices>
+                {openGap.options.map((o, i) => (
+                  <Choice key={o.value} letter={LETTERS[i]} suggested={o.suggested} onClick={() => choose(o)}>
                     {o.label}
-                  </button>
+                  </Choice>
                 ))}
-              </div>
+              </Choices>
             )}
           </div>
-          <form onSubmit={submit} className="flex items-center gap-2 border-t border-rule p-3">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              disabled={!session?.messages.some((m) => m.role === "user") || typing}
-              onClick={undo}
-            >
-              Undo
-            </Button>
+
+          <form onSubmit={submit} className="flex items-center gap-3 border-t border-rule py-2.5">
             <input
               ref={input}
               value={text}
@@ -227,16 +235,25 @@ export default function Policy() {
               placeholder={
                 !session
                   ? typedStart
-                    ? "Type your rules, e.g. No alcohol. Meals up to $75."
-                    : "Pick an option above to start"
+                    ? "For example: No alcohol. Meals up to $75."
+                    : "Choose A, B or C to start"
                   : openGap
-                    ? (openGap.free_text_hint ?? "Type a reply…")
-                    : "Type a new rule…"
+                    ? `Or type your answer, or a new rule`
+                    : "Type a new rule"
               }
-              className="min-w-0 flex-1 rounded-lg border border-rule bg-paper px-3 py-2 text-sm placeholder:text-ink-muted/70 focus:border-ink focus:outline-none disabled:opacity-60"
+              className="min-w-0 flex-1 rounded-[3px] border border-ink/20 bg-paper-raised px-2.5 py-1.5 text-sm placeholder:text-ink-muted/70 focus:border-ink focus:outline-none disabled:opacity-50"
             />
             <Button type="submit" variant="primary" size="sm" disabled={!canType || !text.trim()}>
               Send
+            </Button>
+            <Button
+              type="button"
+              variant="quiet"
+              size="sm"
+              disabled={!session?.messages.some((m) => m.role === "user") || typing}
+              onClick={undo}
+            >
+              Undo last answer
             </Button>
           </form>
           <input
@@ -251,45 +268,77 @@ export default function Policy() {
               const fd = new FormData();
               fd.append("file", f);
               fd.append("name", f.name.replace(/\.[^.]+$/, ""));
-              start(fd, `📎 ${f.name}`);
+              start(fd, `Uploaded ${f.name}`);
             }}
           />
         </section>
 
-        <Card title="Policy rules" className="xl:max-h-[min(72vh,760px)] xl:overflow-y-auto">
+        <Section
+          title="Rules so far"
+          meta={
+            session
+              ? `${cards.length} rules${session.grant_ids.length ? ", compared with your grant" : ""}`
+              : undefined
+          }
+          className="xl:max-h-[min(74vh,780px)] xl:overflow-y-auto"
+        >
           {session ? (
-            <>
-              <p className="-mt-2 mb-4 text-sm text-ink-muted">
-                {cards.length} rules · read by {session.drafter}
-                {session.grant_ids.length > 0 && ` · checked against ${session.grant_ids.length} grant`}
-              </p>
-              <ul className="space-y-4">
-                {cards.map(({ rule: r, description }) => (
-                  <li key={r.id} className="border-t border-rule pt-4 first:border-t-0 first:pt-0">
-                    <div className="flex items-start gap-2">
-                      <Pill tone={r.status === "approved" ? "allowed" : "neutral"}>
-                        {r.status === "approved" ? "Approved" : "Proposed"}
-                      </Pill>
-                      <p className="text-sm font-medium">{description}</p>
-                    </div>
+            <ul>
+              {cards.map(({ rule: r, description }) => (
+                <li key={r.id} className="border-b border-rule py-3 first:pt-0 last:border-b-0">
+                  <p className="text-sm font-medium leading-snug">{description}</p>
+                  {r.status !== "approved" && <p className="mt-0.5 text-xs text-ink-muted">Not enforced yet</p>}
+                  <div className="mt-2">
                     <Clause
                       quote={r.citation.quote}
-                      source={r.citation.page === session.chat_page ? "From this chat" : `${session.source} · p. ${r.citation.page}`}
+                      source={r.citation.page === session.chat_page ? "Your answer here" : `${session.name}, p. ${r.citation.page}`}
                     />
-                    {(r.params.clarifications ?? []).map((c, i) => (
-                      <p key={i} className="mt-1 text-xs text-ink-muted">
-                        ↳ {c.answer}
-                      </p>
-                    ))}
-                  </li>
-                ))}
-              </ul>
-            </>
+                  </div>
+                </li>
+              ))}
+            </ul>
           ) : (
-            <p className="text-sm text-ink-muted">Rules will appear here as the assistant reads your policy.</p>
+            <p className="text-sm text-ink-muted">Rules appear here as the policy is read.</p>
           )}
-        </Card>
+        </Section>
       </div>
     </>
+  );
+}
+
+function Choices({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="grid grid-cols-[4.5rem_minmax(0,1fr)] gap-3 pt-2">
+      <span />
+      <ol className="max-w-[68ch] border-t border-rule">{children}</ol>
+    </div>
+  );
+}
+
+function Choice({
+  letter,
+  suggested,
+  onClick,
+  children,
+}: {
+  letter: string;
+  suggested?: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <li className="border-b border-rule">
+      <button
+        type="button"
+        onClick={onClick}
+        className="group grid w-full grid-cols-[1.5rem_minmax(0,1fr)] items-baseline gap-2 py-2.5 text-left text-[15px] hover:bg-paper-raised focus-visible:outline-2 focus-visible:outline-ink"
+      >
+        <span className="font-mono text-sm text-ink-muted group-hover:text-ink">{letter}</span>
+        <span>
+          {children}
+          {suggested && <span className="ml-2 text-sm text-allowed">Suggested</span>}
+        </span>
+      </button>
+    </li>
   );
 }

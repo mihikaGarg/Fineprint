@@ -100,7 +100,7 @@ class Gap(BaseModel):
     category: str | None = None
     # Answered automatically (e.g. already covered); counts as done in "(2 of 6)".
     auto: bool = False
-    # Why the highlighted choice is suggested (shown once per reason).
+    # Why the first choice is suggested (shown once per reason).
     suggest_reason: str | None = None
     # For "narrow" gaps: the held-back rule, applied to the whole category if the user agrees.
     rule: SpendRule | None = None
@@ -687,9 +687,9 @@ def _ask_next(s: PolicySession) -> None:
     if gap.suggest_reason:
         said = any(gap.suggest_reason in m.text for m in s.messages if m.role == "assistant")
         why = (
-            "\nI'd go with the highlighted choice, for the same reason as before."
+            "\nI'd pick the first choice, for the same reason as before."
             if said
-            else f"\nI'd go with the highlighted choice. {gap.suggest_reason}"
+            else f"\nI'd pick the first choice. {gap.suggest_reason}"
         )
     s.messages.append(
         ChatMessage(
