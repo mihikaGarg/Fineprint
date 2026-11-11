@@ -194,7 +194,14 @@ const LABELS: Record<string, string> = {
 };
 
 export const label = (category: string) => LABELS[category] ?? category.replace(/_/g, " ");
+const ACRONYMS = new Set(["it", "hr", "cfo", "ceo", "coo", "cto", "cio", "vp", "pi"]);
+/** finance_director -> finance director; cfo -> CFO; it_department -> IT department. */
 export const roleLabel = (role: string) =>
-  role.length <= 3 ? role.toUpperCase() : role.replace(/_/g, " ");
+  role.length <= 3 && !role.includes("_")
+    ? role.toUpperCase()
+    : role
+        .split("_")
+        .map((w) => (ACRONYMS.has(w.toLowerCase()) ? w.toUpperCase() : w))
+        .join(" ");
 export const verdictText = (v: Verdict) =>
   ({ ALLOWED: "Allowed", NEEDS_REVIEW: "Needs review", BLOCKED: "Blocked" })[v];

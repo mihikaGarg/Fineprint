@@ -35,7 +35,7 @@ export const HOME_DEMO = {
     {
       "page": 2,
       "text": "Costs incurred outside the period of performance may not be charged to the award unless the\nFoundation agrees in writing.",
-      "status": "rejected"
+      "status": "flagged"
     },
     {
       "page": 2,
@@ -50,7 +50,7 @@ export const HOME_DEMO = {
     {
       "page": 2,
       "text": "The Recipient may move up to ten percent of the total award between budget categories without\napproval.",
-      "status": "no_rule"
+      "status": "flagged"
     },
     {
       "page": 2,
@@ -65,7 +65,7 @@ export const HOME_DEMO = {
     {
       "page": 3,
       "text": "5.2 The Recipient may not charge the award for alcoholic beverages, entertainment, or lobbying\nactivities of any kind.",
-      "status": "no_rule"
+      "status": "rule"
     },
     {
       "page": 3,
@@ -75,7 +75,7 @@ export const HOME_DEMO = {
     {
       "page": 3,
       "text": "5.4 Meals are allowable only when they are an integral part of a project meeting and are reasonable in\ncost.",
-      "status": "no_rule"
+      "status": "flagged"
     },
     {
       "page": 4,
@@ -85,7 +85,7 @@ export const HOME_DEMO = {
     {
       "page": 4,
       "text": "7.2 Any single item of equipment costing $10,000 or more must receive the Program Officer's written\napproval before purchase.",
-      "status": "no_rule"
+      "status": "rule"
     },
     {
       "page": 4,
@@ -95,7 +95,7 @@ export const HOME_DEMO = {
     {
       "page": 5,
       "text": "The approved budget for the period of performance is as follows.",
-      "status": "rejected"
+      "status": "no_rule"
     },
     {
       "page": 5,
@@ -110,15 +110,15 @@ export const HOME_DEMO = {
   ],
   "coverage": {
     "total": 21,
-    "rules": 4,
-    "flagged": 0,
-    "rejected": 2,
-    "no_rule": 15
+    "rules": 6,
+    "flagged": 3,
+    "rejected": 0,
+    "no_rule": 12
   },
   "policyRules": 13,
   "question": {
-    "intro": "I read northwind_te_policy.pdf (5 pages). Found 11 rules, 7 need a detail, 2 have exceptions, 2 are too vague to enforce, 1 isn't supported yet, 1 note about your grant. Let's go through the 13 open items one at a time.",
-    "text": "(1 of 13) \"Expenses of $1,000 or more need manager approval.\" What should happen if someone spends $1,000 or more without manager approval?\nI'd pick the first choice. Your policy says \"Violations of this policy may result in denial of reimbursement and disciplinary action.\" (p. 5).",
+    "intro": "I read northwind_te_policy.pdf (5 pages). Found 11 rules, 7 need a detail, 2 have exceptions, 2 are too vague to enforce, 1 isn't supported yet, 5 notes about your grant. Let's go through the 17 open items one at a time.",
+    "text": "(1 of 17) \"Expenses of $1,000 or more need manager approval.\" What should happen if someone spends $1,000 or more without manager approval?\nI'd pick the first choice. Your policy says \"Violations of this policy may result in denial of reimbursement and disciplinary action.\" (p. 5).",
     "options": [
       {
         "label": "Reject expenses of $1,000 or more without manager sign-off",
@@ -139,8 +139,8 @@ export const HOME_DEMO = {
       "category": "airfare",
       "amount_cents": 61200,
       "verdict": "ALLOWED",
-      "latency_ms": 0.031,
-      "rules": 10,
+      "latency_ms": 0.041,
+      "rules": 11,
       "reason": null,
       "source": null,
       "quote": null
@@ -152,8 +152,8 @@ export const HOME_DEMO = {
       "category": "first_class_airfare",
       "amount_cents": 184000,
       "verdict": "NEEDS_REVIEW",
-      "latency_ms": 0.024,
-      "rules": 10,
+      "latency_ms": 0.032,
+      "rules": 11,
       "reason": "Category is first class airfare; only allowed as an exception",
       "source": "Company policy",
       "quote": "First class airfare is not allowed unless the flight exceeds six hours."
@@ -165,8 +165,8 @@ export const HOME_DEMO = {
       "category": "lodging",
       "amount_cents": 105000,
       "verdict": "NEEDS_REVIEW",
-      "latency_ms": 0.023,
-      "rules": 11,
+      "latency_ms": 0.039,
+      "rules": 12,
       "reason": "$1,050 is over the $350 cap",
       "source": "Company policy",
       "quote": "Each lodging charge over $350 is flagged for review."
@@ -178,8 +178,8 @@ export const HOME_DEMO = {
       "category": "meals",
       "amount_cents": 54000,
       "verdict": "BLOCKED",
-      "latency_ms": 0.017,
-      "rules": 10,
+      "latency_ms": 0.031,
+      "rules": 11,
       "reason": "$540 is over the $75 cap",
       "source": "Company policy",
       "quote": "Meals up to $75 per person."
@@ -190,12 +190,12 @@ export const HOME_DEMO = {
       "merchant": "Riverside Wine Bar",
       "category": "alcohol",
       "amount_cents": 18000,
-      "verdict": "NEEDS_REVIEW",
-      "latency_ms": 0.016,
-      "rules": 9,
-      "reason": "Category is alcohol; only allowed as an exception",
-      "source": "Company policy",
-      "quote": "Alcohol is not reimbursable except at approved client entertainment events."
+      "verdict": "BLOCKED",
+      "latency_ms": 0.025,
+      "rules": 10,
+      "reason": "Category is alcohol",
+      "source": "Grant, p. 3",
+      "quote": "The Recipient may not charge the award for alcoholic beverages, entertainment, or lobbying\nactivities of any kind."
     },
     {
       "id": "NW-1006",
@@ -204,11 +204,11 @@ export const HOME_DEMO = {
       "category": "equipment",
       "amount_cents": 4800000,
       "verdict": "BLOCKED",
-      "latency_ms": 0.09,
-      "rules": 10,
+      "latency_ms": 0.033,
+      "rules": 12,
       "reason": "Exceeds budget line 'equipment': requires $48,000 but only $20,000 allocated",
       "source": "Grant, p. 4",
-      "quote": "7.1 Equipment expenditures may not exceed the amount shown in the approved budget."
+      "quote": "Equipment expenditures may not exceed the amount shown in the approved budget."
     },
     {
       "id": "NW-1007",
@@ -217,11 +217,11 @@ export const HOME_DEMO = {
       "category": "equipment",
       "amount_cents": 1240000,
       "verdict": "BLOCKED",
-      "latency_ms": 0.023,
-      "rules": 10,
-      "reason": "$12,400 needs department director approval",
-      "source": "Company policy",
-      "quote": "Expenses of $10,000 or more need department director approval."
+      "latency_ms": 0.044,
+      "rules": 12,
+      "reason": "Exceeds $10,000 without prior written approval",
+      "source": "Grant, p. 4",
+      "quote": "Any single item of equipment costing $10,000 or more must receive the Program Officer's written\napproval before purchase."
     },
     {
       "id": "NW-1008",
@@ -230,8 +230,8 @@ export const HOME_DEMO = {
       "category": "supplies",
       "amount_cents": 8600,
       "verdict": "BLOCKED",
-      "latency_ms": 0.017,
-      "rules": 9,
+      "latency_ms": 0.044,
+      "rules": 10,
       "reason": "'Amazon Marketplace' matches restricted merchant 'Amazon Marketplace'",
       "source": "Company policy",
       "quote": "Do not purchase from Amazon Marketplace."
@@ -243,8 +243,8 @@ export const HOME_DEMO = {
       "category": "ground_transport",
       "amount_cents": 6400,
       "verdict": "NEEDS_REVIEW",
-      "latency_ms": 0.018,
-      "rules": 11,
+      "latency_ms": 0.043,
+      "rules": 12,
       "reason": "No receipt for $64",
       "source": "Company policy",
       "quote": "Receipts are required for any expense of $25 or more."
@@ -256,11 +256,11 @@ export const HOME_DEMO = {
       "category": "fundraising",
       "amount_cents": 250000,
       "verdict": "BLOCKED",
-      "latency_ms": 0.016,
-      "rules": 9,
+      "latency_ms": 0.035,
+      "rules": 10,
       "reason": "Category is fundraising",
       "source": "Grant, p. 3",
-      "quote": "5.3 Fundraising costs are unallowable."
+      "quote": "Fundraising costs are unallowable."
     },
     {
       "id": "NW-1011",
@@ -269,8 +269,8 @@ export const HOME_DEMO = {
       "category": "travel_domestic",
       "amount_cents": 45000,
       "verdict": "BLOCKED",
-      "latency_ms": 0.018,
-      "rules": 10,
+      "latency_ms": 0.037,
+      "rules": 11,
       "reason": "Date 2027-03-10 is outside performance period (Feb 1, 2026 to Jan 31, 2027)",
       "source": "Grant, p. 2",
       "quote": "The period of performance for this award begins on February 1, 2026 and ends on January 31, 2027."
@@ -282,8 +282,8 @@ export const HOME_DEMO = {
       "category": "gifts",
       "amount_cents": 15000,
       "verdict": "BLOCKED",
-      "latency_ms": 0.018,
-      "rules": 10,
+      "latency_ms": 0.047,
+      "rules": 11,
       "reason": "$150 needs provost approval",
       "source": "Company policy",
       "quote": "Gifts over $100 require the provost's approval."
@@ -294,12 +294,12 @@ export const HOME_DEMO = {
       "merchant": "Figma",
       "category": "software",
       "amount_cents": 960000,
-      "verdict": "ALLOWED",
-      "latency_ms": 0.018,
-      "rules": 10,
-      "reason": null,
-      "source": null,
-      "quote": null
+      "verdict": "BLOCKED",
+      "latency_ms": 0.045,
+      "rules": 11,
+      "reason": "$9,600 needs it department approval",
+      "source": "Company policy",
+      "quote": "Software subscriptions require IT approval."
     },
     {
       "id": "NW-1014",
@@ -308,11 +308,11 @@ export const HOME_DEMO = {
       "category": "equipment",
       "amount_cents": 6200000,
       "verdict": "BLOCKED",
-      "latency_ms": 0.022,
-      "rules": 10,
+      "latency_ms": 0.067,
+      "rules": 12,
       "reason": "Exceeds budget line 'equipment': requires $62,000 but only $20,000 allocated",
       "source": "Grant, p. 4",
-      "quote": "7.1 Equipment expenditures may not exceed the amount shown in the approved budget."
+      "quote": "Equipment expenditures may not exceed the amount shown in the approved budget."
     },
     {
       "id": "NW-1015",
@@ -321,8 +321,8 @@ export const HOME_DEMO = {
       "category": "travel_domestic",
       "amount_cents": 38000,
       "verdict": "ALLOWED",
-      "latency_ms": 0.015,
-      "rules": 10,
+      "latency_ms": 0.04,
+      "rules": 11,
       "reason": null,
       "source": null,
       "quote": null
@@ -334,8 +334,8 @@ export const HOME_DEMO = {
       "category": "equipment",
       "amount_cents": 480000,
       "verdict": "ALLOWED",
-      "latency_ms": 0.018,
-      "rules": 10,
+      "latency_ms": 0.04,
+      "rules": 12,
       "reason": null,
       "source": null,
       "quote": null

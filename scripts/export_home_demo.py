@@ -1,27 +1,43 @@
 """Write web/src/lib/home-demo.ts: real output from the demo, shown on the home page.
 
 Runs the demo grant, the sample policy (answering each question with the
-suggested choice) and the 16 sample expenses through the real API in-process,
-offline. Re-run after changing the compiler or engine:
+suggested choice) and the 16 sample expenses through the real API. By default
+it runs the API in-process and offline. Pass --api to read from a running server
+instead, e.g. one started with an API key so the numbers match what Claude finds:
 
     python scripts/export_home_demo.py
+    python scripts/export_home_demo.py --api http://localhost:8000
+
+The key stays with that server; this script never sees it.
 """
 
+import argparse
 import json
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
-os.environ.pop("ANTHROPIC_API_KEY", None)
-os.environ["FINEPRINT_PROPOSER"] = "keyword"
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from fastapi.testclient import TestClient  # noqa: E402
+parser = argparse.ArgumentParser()
+parser.add_argument("--api", help="read from this running Fineprint API instead of in-process")
+args = parser.parse_args()
 
-import api.main as m  # noqa: E402
+c: Any
+if args.api:
+    import httpx
 
-c = TestClient(m.app)
+    c = httpx.Client(base_url=args.api, timeout=300)
+else:
+    os.environ.pop("ANTHROPIC_API_KEY", None)
+    os.environ["FINEPRINT_PROPOSER"] = "keyword"
+    from fastapi.testclient import TestClient
+
+    import api.main as m
+
+    c = TestClient(m.app)
 c.post("/api/reset")
 grant = c.post("/api/compile/demo").json()
 gid = grant["ruleset"]["grant_id"]
@@ -35,11 +51,14 @@ first = s["messages"][-1]
 question = {
     "intro": s["messages"][-2]["text"],
     "text": first["text"],
-    "options": [{"label": o["label"], "suggested": bool(o.get("suggested"))} for o in first["options"]],
+    "options": [
+        {"label": o["label"], "suggested": bool(o.get("suggested"))} for o in first["options"]
+    ],
 }
 while not s["approved"]:
     msg = s["messages"][-1]
-    s = c.post(f"/api/chat/{s['session_id']}/reply", json={"gap_id": msg["gap_id"], "value": msg["options"][0]["value"]}).json()
+    answer = {"gap_id": msg["gap_id"], "value": msg["options"][0]["value"]}
+    s = c.post(f"/api/chat/{s['session_id']}/reply", json=answer).json()
 question["answer"] = next(x["text"] for x in s["messages"] if x["text"].startswith("Got it"))
 
 batch = c.post("/api/expenses/sample-batch", json={}).json()
@@ -47,25 +66,41 @@ rows = []
 for item in batch:
     e, r = item["expense"], item["result"]
     issue = next((t for t in r["traces"] if t["outcome"] != "PASS"), None)
-    rows.append({
-        "id": e["id"], "memo": e["memo"], "merchant": e["merchant"], "category": e["category"],
-        "amount_cents": e["amount_cents"], "verdict": r["verdict"], "latency_ms": r["latency_ms"],
-        "rules": len(r["traces"]),
-        "reason": issue["reason"] if issue else None,
-        "source": (f"Grant, p. {issue['citation']['page']}" if issue["source"] == "grant" else "Company policy") if issue else None,
-        "quote": issue["citation"]["quote"] if issue else None,
-    })
+    rows.append(
+        {
+            "id": e["id"],
+            "memo": e["memo"],
+            "merchant": e["merchant"],
+            "category": e["category"],
+            "amount_cents": e["amount_cents"],
+            "verdict": r["verdict"],
+            "latency_ms": r["latency_ms"],
+            "rules": len(r["traces"]),
+            "reason": issue["reason"] if issue else None,
+            "source": None
+            if not issue
+            else f"Grant, p. {issue['citation']['page']}"
+            if issue["source"] == "grant"
+            else "Company policy",
+            "quote": issue["citation"]["quote"] if issue else None,
+        }
+    )
 state = c.get("/api/state").json()
 budget = next(b for b in state["budgets"] if b["grant_id"] == gid)
 cov = grant["coverage"]
 data = {
     "grantName": grant["ruleset"]["grant_name"],
-    "clauses": [{"page": x["page"], "text": x["text"], "status": x["status"]} for x in cov["clauses"]],
+    "clauses": [
+        {"page": x["page"], "text": x["text"], "status": x["status"]} for x in cov["clauses"]
+    ],
     "coverage": {k: cov[k] for k in ("total", "rules", "flagged", "rejected", "no_rule")},
     "policyRules": len(s["ruleset"]["rules"]),
     "question": question,
     "expenses": rows,
-    "budget": [{k: line[k] for k in ("label", "allocated_cents", "spent_cents", "source")} for line in budget["lines"]],
+    "budget": [
+        {k: line[k] for k in ("label", "allocated_cents", "spent_cents", "source")}
+        for line in budget["lines"]
+    ],
 }
 out = ROOT / "web" / "src" / "lib" / "home-demo.ts"
 out.write_text(
@@ -73,4 +108,5 @@ out.write_text(
     f"export const HOME_DEMO = {json.dumps(data, indent=2, ensure_ascii=False)} as const;\n",
     encoding="utf-8",
 )
-print("wrote", out.relative_to(ROOT), len(rows), "expenses")
+print("wrote", out.relative_to(ROOT), len(rows), "expenses, read by", grant["proposer"])
+c.post("/api/reset")

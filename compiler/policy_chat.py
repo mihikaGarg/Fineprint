@@ -33,7 +33,7 @@ from compiler.propose import parse_dollars_to_cents
 from compiler.recommend import Suggestion, suggest_action, suggest_exception
 from compiler.sentences import split_sentences
 from contracts.models import Ruleset, SpendRule
-from enforce.rules import format_cents
+from enforce.rules import format_cents, role_label
 
 GapKind = Literal[
     "question", "exception", "narrow", "vague", "unsupported", "missing", "conflict", "final"
@@ -64,11 +64,6 @@ LABELS = {
 
 def label(category: str) -> str:
     return LABELS.get(category, category.replace("_", " "))
-
-
-def role_label(role: str) -> str:
-    """finance_director -> finance director; cfo -> CFO; it -> IT."""
-    return role.upper() if len(role) <= 3 else role.replace("_", " ")
 
 
 GROUP_NOUNS = {

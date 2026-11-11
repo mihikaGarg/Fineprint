@@ -2,7 +2,7 @@
 
 import { Fragment, useState } from "react";
 import { Verdict, type VerdictKey } from "@/components/brand";
-import { label, money } from "@/lib/api";
+import { label, money, type ClauseStatus } from "@/lib/api";
 import { HOME_DEMO } from "@/lib/home-demo";
 
 const D = HOME_DEMO;
@@ -50,7 +50,7 @@ export function DecisionFeed() {
 /** The demo agreement as a marked-up page: rules highlighted, rejected lines struck, the rest plain. */
 export function MarkedAgreement() {
   const [hover, setHover] = useState<number | null>(null);
-  const shown = D.clauses.slice(0, 14);
+  const shown: { page: number; text: string; status: ClauseStatus }[] = D.clauses.slice(0, 14);
   return (
     <div className="crop bg-paper-raised px-6 py-6 sm:px-8">
       <div className="mb-4 flex items-baseline justify-between border-b border-ink pb-2">
@@ -69,6 +69,7 @@ export function MarkedAgreement() {
             <p
               className={cx(
                 c.status === "no_rule" && "text-ink-muted",
+                c.status === "flagged" && "underline decoration-review decoration-dotted decoration-2 underline-offset-4",
                 c.status === "rejected" && "text-ink-muted line-through decoration-blocked decoration-2",
               )}
             >
@@ -79,7 +80,9 @@ export function MarkedAgreement() {
                     ? "→ became a rule"
                     : c.status === "rejected"
                       ? "→ rejected: couldn't be checked"
-                      : "→ nothing to enforce"}
+                      : c.status === "flagged"
+                        ? "→ unclear: left for a person"
+                        : "→ nothing to enforce"}
                 </span>
               )}
             </p>
