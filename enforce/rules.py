@@ -88,9 +88,17 @@ def _covering_approver(role: str, approvals: Iterable[str], chain: Mapping[str, 
     return max(higher, key=lambda a: chain[a]) if higher else None
 
 
-def _role_label(role: str) -> str:
-    """finance_director -> finance director; cfo -> CFO."""
-    return role.upper() if len(role) <= 3 else role.replace("_", " ")
+ACRONYMS = {"it", "hr", "cfo", "ceo", "coo", "cto", "cio", "vp", "pi"}
+
+
+def role_label(role: str) -> str:
+    """finance_director -> finance director; cfo -> CFO; it_department -> IT department."""
+    if len(role) <= 3 and "_" not in role:
+        return role.upper()
+    return " ".join(w.upper() if w.lower() in ACRONYMS else w for w in role.split("_"))
+
+
+_role_label = role_label
 
 
 def _category_label(category: str) -> str:

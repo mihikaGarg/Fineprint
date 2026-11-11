@@ -1,220 +1,258 @@
-import { InteractiveStudio } from "@/components/studio";
-import { VerdictBadge, VerdictDemo } from "@/components/verdict-demo";
+import Link from "next/link";
+import { RegMark, Wordmark } from "@/components/brand";
+import { BudgetBoard, DecisionFeed, ExpenseLedger, MarkedAgreement, TranscriptSample } from "@/components/home/showcase";
+import { HOME_DEMO } from "@/lib/home-demo";
 
 const REPO_URL = "https://github.com/mihikaGarg/Fineprint";
 
-const COMPILE_STEPS = [
-  { title: "Read the agreement", body: "Extract every page of the grant PDF with stable character offsets." },
-  { title: "Propose rules", body: "An LLM proposes typed rules, each with the exact clause it relies on." },
-  { title: "Verify every citation", body: "Code checks each quote against the PDF, character for character. Anything that doesn't match is rejected." },
+const slowest = Math.max(...HOME_DEMO.expenses.map((e) => e.latency_ms));
+const FIGURES = [
+  [String(HOME_DEMO.coverage.total), "clauses read in the demo grant"],
+  [`${HOME_DEMO.coverage.rules} + ${HOME_DEMO.policyRules}`, "grant rules and company rules"],
+  [String(HOME_DEMO.expenses.length), "sample expenses decided"],
+  [`${slowest < 1 ? "<1" : slowest.toFixed(1)} ms`, "for the slowest decision"],
 ];
 
-const ENFORCE_STEPS = [
-  { title: "Expense arrives", body: "Amount, date, merchant, category, and current budget state." },
-  { title: "Rules evaluate", body: "Plain deterministic code. No model calls, no randomness, built to answer in under 100ms." },
-  { title: "Verdict with a trace", body: "Every rule's outcome, linked back to the clause and page it came from." },
+const PRINCIPLES = [
+  [
+    "No quote, no rule",
+    "Every rule carries the exact sentence it came from, with its page and character offsets. Code checks the quote against the PDF; a model's paraphrase never becomes a rule.",
+  ],
+  [
+    "A model never moves money",
+    "Models can help read a contract. Whether an expense is allowed is decided by plain code, which gives the same answer every time and can say why.",
+  ],
+  [
+    "Unclear goes to a person",
+    "If the code can't tell whether an exception applies, say a first-class flight over six hours, the expense waits for a reviewer instead of being guessed at.",
+  ],
+  [
+    "Whole cents only",
+    "Every amount is an integer number of cents from the PDF to the budget line. Nothing is rounded and no model does arithmetic.",
+  ],
 ];
 
-const GUARANTEES = [
-  {
-    title: "Cited to the character",
-    body: "Every rule carries a verbatim quote, page number, and character offsets, verified against the source PDF. No citation, no rule.",
-  },
-  {
-    title: "Agents propose, code disposes",
-    body: "Models help read the contract. They never approve or block a payment. That decision is always deterministic.",
-  },
-  {
-    title: "Cents, never floats",
-    body: "All money is integer cents end to end. Models never do arithmetic.",
-  },
-  {
-    title: "Ambiguity escalates",
-    body: "When a clause or an expense is unclear, Fineprint sends it to a person. It never guesses.",
-  },
-];
-
-const VERDICTS = [
-  { verdict: "ALLOWED" as const, body: "Every applicable rule passed. Spend recorded against the budget line." },
-  { verdict: "BLOCKED" as const, body: "A rule failed. The trace shows which clause, on which page, and why." },
-  { verdict: "NEEDS_REVIEW" as const, body: "Something needs a human: a missing approval, an unknown category, an unclear clause." },
-];
-
-function Wordmark() {
+function OpenApp({ tone = "accent" }: { tone?: "accent" | "ink" }) {
   return (
-    <span className="font-serif text-2xl tracking-tight">
-      Fine<span className="italic">print</span>
-    </span>
+    <Link
+      href="/app"
+      className={
+        "inline-flex items-center gap-2 border-2 border-ink px-5 py-2.5 text-sm font-semibold shadow-[4px_4px_0_var(--ink)] transition-all hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0_var(--ink)] " +
+        (tone === "accent" ? "bg-accent text-accent-ink" : "bg-ink text-paper shadow-[4px_4px_0_var(--paper)]")
+      }
+    >
+      Open the app <span aria-hidden>→</span>
+    </Link>
   );
 }
 
-function Steps({ label, tag, steps }: { label: string; tag: string; steps: typeof COMPILE_STEPS }) {
+function Step({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border border-rule bg-paper-raised p-6 sm:p-8">
-      <div className="mb-6 flex items-baseline justify-between gap-4">
-        <h3 className="font-serif text-3xl">{label}</h3>
-        <span className="font-mono text-xs uppercase tracking-wider text-ink-muted">{tag}</span>
-      </div>
-      <ol className="space-y-5">
-        {steps.map((s, i) => (
-          <li key={s.title} className="grid grid-cols-[2rem_1fr] gap-3">
-            <span className="font-mono text-sm text-ink-muted tabular-nums">0{i + 1}</span>
-            <div>
-              <p className="font-medium">{s.title}</p>
-              <p className="mt-1 text-sm leading-relaxed text-ink-muted">{s.body}</p>
-            </div>
-          </li>
-        ))}
-      </ol>
+    <div>
+      <p className="flex items-center gap-2 font-mono text-xs text-accent">
+        <RegMark className="size-3.5" /> Step {n}
+      </p>
+      <h2 className="font-display mt-3 text-[clamp(2rem,4vw,3.25rem)]">{title}</h2>
+      <div className="mt-5 max-w-[46ch] space-y-3 text-[17px] leading-relaxed text-ink-muted">{children}</div>
     </div>
   );
 }
 
 export default function Home() {
   return (
-    <div className="min-h-screen">
-      <header className="mx-auto flex max-w-6xl items-center justify-between px-4 py-5 sm:px-6">
-        <Wordmark />
-        <nav className="flex items-center gap-5 text-sm">
-          <a href="#studio" className="font-medium text-ink hover:underline">
-            Live Studio
-          </a>
-          <a href="#how" className="hidden text-ink-muted hover:text-ink sm:inline">
-            How it works
-          </a>
-          <a href="#guarantees" className="hidden text-ink-muted hover:text-ink sm:inline">
-            Guarantees
-          </a>
-          <a
-            href={REPO_URL}
-            className="rounded-full border border-rule px-4 py-1.5 font-medium hover:border-ink"
-          >
-            GitHub
-          </a>
-        </nav>
+    <div className="min-h-screen overflow-x-hidden">
+      <header className="sticky top-0 z-20 border-b border-ink bg-paper/95 backdrop-blur-[2px]">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6">
+          <Wordmark />
+          <nav className="flex items-center gap-6 text-sm">
+            <a href="#mission" className="hidden hover:text-accent sm:inline">
+              Mission
+            </a>
+            <a href="#product" className="hidden hover:text-accent sm:inline">
+              Product
+            </a>
+            <a href="#principles" className="hidden hover:text-accent md:inline">
+              Principles
+            </a>
+            <Link href="/app" className="bg-ink px-3 py-1.5 font-semibold text-paper hover:bg-accent hover:text-accent-ink">
+              Open the app
+            </Link>
+          </nav>
+        </div>
       </header>
 
       <main>
-        <section className="mx-auto grid max-w-6xl items-center gap-12 px-4 pb-20 pt-10 sm:px-6 lg:grid-cols-[1.1fr_1fr] lg:pt-20">
-          <div>
-            <p className="mb-5 font-mono text-xs uppercase tracking-[0.18em] text-ink-muted">
-              Grant compliance, compiled
-            </p>
-            <h1 className="font-serif text-5xl leading-[1.02] tracking-tight sm:text-6xl lg:text-7xl">
-              Every dollar, cleared by <span className="italic">the clause.</span>
-            </h1>
-            <p className="mt-6 max-w-xl text-lg leading-relaxed text-ink-muted">
-              Fineprint turns a grant agreement into enforceable spend rules, then checks every
-              expense against them. Each verdict points to the exact sentence in the contract that
-              decided it.
-            </p>
-            <div className="mt-8 flex flex-wrap gap-3">
-              <a
-                href="#studio"
-                className="rounded-full bg-ink px-6 py-3 text-sm font-medium text-paper hover:opacity-90"
-              >
-                Launch Live Studio
-              </a>
-              <a
-                href="#how"
-                className="rounded-full border border-rule px-6 py-3 text-sm font-medium hover:border-ink"
-              >
-                See how it works
-              </a>
-              <a
-                href={REPO_URL}
-                className="rounded-full border border-rule px-6 py-3 text-sm font-medium hover:border-ink"
-              >
-                View the code
-              </a>
+        {/* Hero */}
+        <section className="border-b border-ink">
+          <div className="mx-auto grid max-w-7xl gap-14 px-4 py-12 sm:px-6 lg:grid-cols-[1.15fr_1fr] lg:py-16">
+            <div className="flex flex-col justify-center">
+              <p className="font-mono text-xs text-ink-muted">Spend controls for grant-funded teams</p>
+              <h1 className="font-display mt-5 text-[clamp(2.6rem,5.4vw,4.9rem)]">
+                Every dollar, cleared by the <mark>clause.</mark>
+              </h1>
+              <p className="mt-6 max-w-[52ch] text-lg leading-relaxed text-ink-muted">
+                The limits on grant money live in single sentences buried in the agreement: no
+                alcohol, nothing outside the award dates, equipment over $10,000 needs the program
+                officer&apos;s sign-off. Fineprint turns those sentences into rules and checks every
+                expense against them before it&apos;s paid.
+              </p>
+              <div className="mt-8 flex flex-wrap items-center gap-6">
+                <OpenApp />
+                <a href="#product" className="text-sm font-medium underline decoration-accent decoration-2 underline-offset-4">
+                  See it on real expenses
+                </a>
+              </div>
             </div>
+            <DecisionFeed />
           </div>
-          <VerdictDemo />
+          <dl className="mx-auto grid max-w-7xl grid-cols-2 border-t border-ink lg:grid-cols-4">
+            {FIGURES.map(([value, text]) => (
+              <div key={text} className="border-b border-rule px-4 py-5 even:border-l lg:border-b-0 lg:border-l lg:first:border-l-0 sm:px-6">
+                <dt className="font-display text-3xl tabular-nums">{value}</dt>
+                <dd className="mt-1 text-sm text-ink-muted">{text}</dd>
+              </div>
+            ))}
+          </dl>
         </section>
 
-        {/* Live Interactive Studio Section */}
-        <section id="studio" className="border-t border-rule bg-paper py-20">
-          <div className="mx-auto max-w-6xl px-4 sm:px-6">
-            <div className="mb-8 max-w-2xl">
-              <h2 className="font-serif text-4xl sm:text-5xl">Live Compliance Studio</h2>
-              <p className="mt-3 text-ink-muted">
-                Upload any grant agreement PDF or use the bundled award to inspect verified clauses
-                and test spend rules with instant deterministic feedback.
+        {/* Mission */}
+        <section id="mission" className="border-b border-ink bg-[#caf0f8]">
+          <div className="mx-auto grid max-w-7xl gap-12 px-4 py-20 sm:px-6 lg:grid-cols-[1.1fr_1fr]">
+            <h2 className="font-display text-[clamp(2.25rem,4.6vw,4rem)]">
+              Grant money comes with conditions. Most teams learn they broke one at the audit.
+            </h2>
+            <div className="space-y-5 text-[17px] leading-relaxed text-ink-muted">
+              <p>
+                A research lab spends against an award agreement and the university&apos;s own expense
+                policy at the same time. The rules that matter are scattered across both: a cap on
+                meals here, a banned category there, an approval that kicks in at $10,000.
+              </p>
+              <p>
+                Today someone remembers them, or a spreadsheet does. When a charge slips through, the
+                money comes back out of the department&apos;s budget months later.
+              </p>
+              <p className="font-medium text-ink">
+                Our mission is to check every dollar against the exact words it&apos;s bound by, before
+                it moves, and to show the sentence that decided it.
               </p>
             </div>
-            <InteractiveStudio />
           </div>
         </section>
 
-        <section id="how" className="border-t border-rule py-20">
-          <div className="mx-auto max-w-6xl px-4 sm:px-6">
-            <h2 className="max-w-2xl font-serif text-4xl leading-tight sm:text-5xl">
-              Read slowly once. <span className="italic">Decide instantly forever.</span>
-            </h2>
-            <p className="mt-4 max-w-2xl text-ink-muted">
-              Two paths, kept apart on purpose. Compiling the contract can take its time. Checking
-              a payment has to be fast, repeatable, and explainable.
-            </p>
-            <div className="mt-12 grid gap-6 md:grid-cols-2">
-              <Steps label="Compile" tag="PDF → rules" steps={COMPILE_STEPS} />
-              <Steps label="Enforce" tag="expense → verdict" steps={ENFORCE_STEPS} />
+        {/* Product */}
+        <div id="product">
+          <section className="border-b border-ink">
+            <div className="mx-auto grid max-w-7xl items-center gap-16 px-4 py-20 sm:px-6 lg:grid-cols-2">
+              <Step n={1} title="Read the agreement">
+                <p>
+                  Upload the grant PDF. Fineprint reads it clause by clause and turns each spending
+                  limit into a typed rule: a date range, a banned category, a budget line, an approval
+                  threshold.
+                </p>
+                <p>
+                  A clause only becomes a rule if its quote matches the PDF character for character.
+                  Hover the page to see what happened to each line.
+                </p>
+              </Step>
+              <MarkedAgreement />
             </div>
-          </div>
-        </section>
+          </section>
 
-        <section className="border-t border-rule py-20">
-          <div className="mx-auto max-w-6xl px-4 sm:px-6">
-            <h2 className="font-serif text-4xl sm:text-5xl">Three answers. No maybes.</h2>
-            <div className="mt-10 grid gap-6 md:grid-cols-3">
-              {VERDICTS.map((v) => (
-                <div key={v.verdict} className="border-t-2 border-ink pt-5">
-                  <VerdictBadge verdict={v.verdict} />
-                  <p className="mt-4 leading-relaxed text-ink-muted">{v.body}</p>
-                </div>
-              ))}
+          <section className="border-b border-ink">
+            <div className="mx-auto grid max-w-7xl items-center gap-16 px-4 py-20 sm:px-6 lg:grid-cols-2">
+              <div className="order-2 lg:order-1">
+                <TranscriptSample />
+              </div>
+              <div className="order-1 lg:order-2">
+                <Step n={2} title="Answer what the policy leaves open">
+                  <p>
+                    Your company policy goes in next. Most of it reads straight into rules. The rest,
+                    a limit with no consequence, a rule with an exception, &ldquo;modest&rdquo;
+                    entertainment, comes back as a question.
+                  </p>
+                  <p>
+                    Each question suggests an answer from your own policy&apos;s wording and quotes
+                    the line it&apos;s based on. Try picking one.
+                  </p>
+                </Step>
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
 
-        <section id="guarantees" className="border-t border-rule py-20">
-          <div className="mx-auto max-w-6xl px-4 sm:px-6">
-            <h2 className="font-serif text-4xl sm:text-5xl">What we won&apos;t compromise on</h2>
-            <dl className="mt-12 grid gap-x-12 gap-y-10 sm:grid-cols-2">
-              {GUARANTEES.map((g, i) => (
-                <div key={g.title} className="grid grid-cols-[2.5rem_1fr]">
-                  <span className="font-serif text-2xl italic text-ink-muted">§{i + 1}</span>
+          <section className="border-b border-ink">
+            <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6">
+              <div className="grid gap-8 lg:grid-cols-[1fr_1.4fr] lg:items-end">
+                <Step n={3} title="Check every expense">
+                  <p>
+                    Each expense runs against the grant and the policy together. The strictest answer
+                    wins, and every decision cites the clause behind it.
+                  </p>
+                </Step>
+                <p className="max-w-[52ch] text-sm text-ink-muted lg:justify-self-end">
+                  These are the 16 sample expenses from the demo, decided by the real checker. Click a
+                  row to see the sentence that decided it.
+                </p>
+              </div>
+              <div className="mt-10">
+                <ExpenseLedger />
+              </div>
+            </div>
+          </section>
+
+          <section className="border-b border-ink">
+            <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6">
+              <Step n={4} title="Keep the budget honest">
+                <p>
+                  Budget lines are read from the agreement&apos;s own budget table, each one cited. Allowed
+                  spend comes off the right line as it&apos;s approved, so you see what&apos;s left before
+                  anyone over-commits.
+                </p>
+              </Step>
+              <div className="mt-10 border border-ink">
+                <BudgetBoard />
+              </div>
+            </div>
+          </section>
+        </div>
+
+        {/* Principles */}
+        <section id="principles" className="border-b border-ink">
+          <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6">
+            <h2 className="font-display text-[clamp(2rem,4vw,3.25rem)]">Four rules the code never breaks</h2>
+            <ol className="mt-12 grid gap-x-16 md:grid-cols-2">
+              {PRINCIPLES.map(([title, body], i) => (
+                <li key={title} className="grid grid-cols-[3.5rem_minmax(0,1fr)] border-t border-ink py-6">
+                  <span className="font-display text-3xl text-accent">{i + 1}</span>
                   <div>
-                    <dt className="text-lg font-medium">{g.title}</dt>
-                    <dd className="mt-2 leading-relaxed text-ink-muted">{g.body}</dd>
+                    <h3 className="text-lg font-semibold">{title}</h3>
+                    <p className="mt-2 leading-relaxed text-ink-muted">{body}</p>
                   </div>
-                </div>
+                </li>
               ))}
-            </dl>
+            </ol>
           </div>
         </section>
 
-        <section className="border-t border-rule py-24">
-          <div className="mx-auto max-w-3xl px-4 text-center sm:px-6">
-            <h2 className="font-serif text-4xl leading-tight sm:text-5xl">
-              Spend with the contract <span className="italic">open.</span>
-            </h2>
-            <p className="mx-auto mt-4 max-w-xl text-ink-muted">
-              Fineprint is in early development. Follow along, or read how it&apos;s built.
+        {/* Try it */}
+        <section className="bg-accent text-accent-ink">
+          <div className="mx-auto flex max-w-7xl flex-col gap-8 px-4 py-16 sm:px-6 md:flex-row md:items-center md:justify-between">
+            <p className="font-display max-w-[22ch] text-[clamp(1.75rem,3.4vw,2.75rem)]">
+              Load the demo grant and check your first expense in a minute.
             </p>
-            <a
-              href={REPO_URL}
-              className="mt-8 inline-block rounded-full bg-ink px-6 py-3 text-sm font-medium text-paper hover:opacity-90"
-            >
-              Follow on GitHub
-            </a>
+            <OpenApp tone="ink" />
           </div>
         </section>
       </main>
 
-      <footer className="border-t border-rule">
-        <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-8 text-sm text-ink-muted sm:flex-row sm:items-center sm:justify-between sm:px-6">
+      <footer className="border-t border-ink">
+        <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-6 text-sm sm:flex-row sm:items-center sm:justify-between sm:px-6">
           <Wordmark />
-          <p>Built at the Ramp × BBS hackathon.</p>
+          <p className="text-ink-muted">
+            Built at the Ramp × BBS hackathon ·{" "}
+            <a href={REPO_URL} className="underline decoration-accent underline-offset-4 hover:text-ink">
+              source on GitHub
+            </a>
+          </p>
         </div>
       </footer>
     </div>

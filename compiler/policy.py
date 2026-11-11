@@ -25,7 +25,7 @@ from compiler.citation import verify_citation
 from compiler.narrow import narrower_scope
 from compiler.propose import parse_dollars_to_cents
 from contracts.models import KNOWN_CATEGORIES, Ruleset, SpendRule
-from enforce.rules import format_cents
+from enforce.rules import format_cents, role_label
 from shared.llm import Effort, LLMError, LLMRequest, Transport, anthropic_transport, complete_json
 
 POLICY_RULE_TYPES = (
@@ -80,11 +80,6 @@ ONE_EXPENSE = {
     "travel_domestic": "a travel expense",
     "travel_foreign": "a foreign travel expense",
 }
-
-
-def role_label(role: str) -> str:
-    """finance_director -> finance director; cfo -> CFO."""
-    return role.upper() if len(role) <= 3 else role.replace("_", " ")
 
 
 def action_question(rule_type: str, quote: str, params: dict[str, Any]) -> tuple[str, list[Option]]:

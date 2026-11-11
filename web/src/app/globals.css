@@ -1,35 +1,30 @@
 @import "tailwindcss";
 
+/*
+  Identity: a press proof, printed in the Ocean Breeze palette, light only. Deep
+  Twilight (#03045e) is the ink, Bright Teal Blue (#0077b6) the accent, Frosted Blue
+  (#90e0ef) the highlighter on quoted clauses, a Light Cyan (#caf0f8) tint the
+  paper. Verdict colors stay green / red / amber so finance people read them
+  instantly.
+*/
 :root {
-  --paper: #f7f4ec;
-  --paper-raised: #fffdf7;
-  --ink: #16181d;
-  --ink-muted: #5b5f68;
-  --rule: #ddd6c6;
-  --highlight: #f6e27a;
-  --allowed: #1f7a4d;
-  --allowed-bg: #e3f2e8;
-  --blocked: #b42318;
-  --blocked-bg: #fbe5e2;
-  --review: #a15c07;
-  --review-bg: #fcefd6;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --paper: #121317;
-    --paper-raised: #1b1d22;
-    --ink: #ecebe6;
-    --ink-muted: #a2a5ad;
-    --rule: #2e3138;
-    --highlight: #6b5c12;
-    --allowed: #5fd39a;
-    --allowed-bg: #16301f;
-    --blocked: #ff8a7a;
-    --blocked-bg: #3a1a17;
-    --review: #f4b860;
-    --review-bg: #36270f;
-  }
+  color-scheme: light;
+  --paper: #f2fafc;
+  --paper-raised: #ffffff;
+  --ink: #03045e;
+  --ink-muted: #4d5e83;
+  --rule: #c4e3ec;
+  --accent: #0077b6;
+  --accent-ink: #ffffff;
+  --highlight: #90e0ef;
+  --highlight-ink: #03045e;
+  --cyan: #00b4d8;
+  --allowed: #0a7a4a;
+  --allowed-bg: #dcefe4;
+  --blocked: #cf1d2c;
+  --blocked-bg: #f9dfe0;
+  --review: #a86400;
+  --review-bg: #f8ebcf;
 }
 
 @theme inline {
@@ -38,16 +33,19 @@
   --color-ink: var(--ink);
   --color-ink-muted: var(--ink-muted);
   --color-rule: var(--rule);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
   --color-highlight: var(--highlight);
+  --color-highlight-ink: var(--highlight-ink);
+  --color-cyan: var(--cyan);
   --color-allowed: var(--allowed);
   --color-allowed-bg: var(--allowed-bg);
   --color-blocked: var(--blocked);
   --color-blocked-bg: var(--blocked-bg);
   --color-review: var(--review);
   --color-review-bg: var(--review-bg);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-serif: var(--font-newsreader);
+  --font-sans: var(--font-archivo);
+  --font-mono: var(--font-martian);
 }
 
 body {
@@ -55,8 +53,81 @@ body {
   color: var(--ink);
 }
 
-mark {
-  background: linear-gradient(transparent 12%, var(--highlight) 12%, var(--highlight) 88%, transparent 88%);
-  color: inherit;
-  padding: 0 0.1em;
+/* Expanded, heavy Archivo for headlines. */
+.font-display {
+  font-family: var(--font-archivo);
+  font-variation-settings: "wdth" 125;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  line-height: 0.98;
+}
+
+/* Martian Mono a little condensed so figures and ids sit tight. */
+.font-mono {
+  font-variation-settings: "wdth" 87.5;
+}
+
+/* Highlighter stroke behind quoted clauses. */
+mark,
+.hl {
+  background: linear-gradient(
+    100deg,
+    transparent 0.2em,
+    var(--highlight) 0.25em,
+    var(--highlight) calc(100% - 0.25em),
+    transparent calc(100% - 0.2em)
+  );
+  background-size: 100% 72%;
+  background-position: 0 70%;
+  background-repeat: no-repeat;
+  color: var(--highlight-ink);
+  padding: 0 0.15em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+/* Printer's crop marks at the four corners of a figure. */
+.crop {
+  position: relative;
+}
+.crop::before {
+  content: "";
+  position: absolute;
+  inset: -14px;
+  pointer-events: none;
+  --c: var(--ink);
+  background:
+    linear-gradient(var(--c), var(--c)) left 0 top 0 / 9px 1px no-repeat,
+    linear-gradient(var(--c), var(--c)) left 0 top 0 / 1px 9px no-repeat,
+    linear-gradient(var(--c), var(--c)) right 0 top 0 / 9px 1px no-repeat,
+    linear-gradient(var(--c), var(--c)) right 0 top 0 / 1px 9px no-repeat,
+    linear-gradient(var(--c), var(--c)) left 0 bottom 0 / 9px 1px no-repeat,
+    linear-gradient(var(--c), var(--c)) left 0 bottom 0 / 1px 9px no-repeat,
+    linear-gradient(var(--c), var(--c)) right 0 bottom 0 / 9px 1px no-repeat,
+    linear-gradient(var(--c), var(--c)) right 0 bottom 0 / 1px 9px no-repeat;
+}
+
+summary::-webkit-details-marker {
+  display: none;
+}
+
+@keyframes ticker {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-50%);
+  }
+}
+.animate-ticker {
+  animation: ticker 52s linear infinite;
+}
+.animate-ticker:hover {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-ticker {
+    animation: none;
+  }
 }

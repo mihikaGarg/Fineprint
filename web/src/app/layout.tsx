@@ -1,27 +1,25 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Newsreader } from "next/font/google";
+import { Archivo, Martian_Mono } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// Archivo's width axis gives one family two voices: expanded for headlines,
+// normal width for reading. Martian Mono sets figures, ids and labels.
+const archivo = Archivo({
+  variable: "--font-archivo",
   subsets: ["latin"],
+  axes: ["wdth"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const martian = Martian_Mono({
+  variable: "--font-martian",
   subsets: ["latin"],
-});
-
-const newsreader = Newsreader({
-  variable: "--font-newsreader",
-  subsets: ["latin"],
-  style: ["normal", "italic"],
+  axes: ["wdth"],
 });
 
 export const metadata: Metadata = {
-  title: "Fineprint — Every dollar, cleared by the clause",
+  title: "Fineprint · Every dollar, cleared by the clause",
   description:
-    "Fineprint compiles grant agreements into enforceable spend rules and checks every expense against them, with verified clause citations.",
+    "Fineprint reads grant agreements and expense policies into rules quoted from the document, then checks every expense against them before it's paid.",
 };
 
 export default function RootLayout({
@@ -31,11 +29,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} ${newsreader.variable} font-sans antialiased`}
-      >
-        {children}
-      </body>
+      <body className={`${archivo.variable} ${martian.variable} font-sans antialiased`}>{children}</body>
     </html>
   );
 }

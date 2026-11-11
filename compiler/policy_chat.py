@@ -33,7 +33,7 @@ from compiler.propose import parse_dollars_to_cents
 from compiler.recommend import Suggestion, suggest_action, suggest_exception
 from compiler.sentences import split_sentences
 from contracts.models import Ruleset, SpendRule
-from enforce.rules import format_cents
+from enforce.rules import format_cents, role_label
 
 GapKind = Literal[
     "question", "exception", "narrow", "vague", "unsupported", "missing", "conflict", "final"
@@ -66,11 +66,6 @@ def label(category: str) -> str:
     return LABELS.get(category, category.replace("_", " "))
 
 
-def role_label(role: str) -> str:
-    """finance_director -> finance director; cfo -> CFO; it -> IT."""
-    return role.upper() if len(role) <= 3 else role.replace("_", " ")
-
-
 GROUP_NOUNS = {
     "approval_required": ("approval rules", "when someone spends without the required approval"),
     "per_item_cap": ("spending limits", "when someone goes over them"),
@@ -100,7 +95,7 @@ class Gap(BaseModel):
     category: str | None = None
     # Answered automatically (e.g. already covered); counts as done in "(2 of 6)".
     auto: bool = False
-    # Why the highlighted choice is suggested (shown once per reason).
+    # Why the first choice is suggested (shown once per reason).
     suggest_reason: str | None = None
     # For "narrow" gaps: the held-back rule, applied to the whole category if the user agrees.
     rule: SpendRule | None = None
@@ -168,6 +163,14 @@ def describe(rule: SpendRule) -> str:
         threshold = int(p.get("threshold_cents", 0))
         when = f"from {format_cents(threshold)}" if threshold else "on every expense"
         line = f"receipt needed {when}" + (f" ({cats})" if categories else "")
+    elif t == "period_of_performance":
+        line = f"only expenses dated {p.get('label') or 'within the award period'}"
+    elif t == "budget_limit":
+        line = f"must fit the {label(str(p.get('budget_line', '')))} budget line"
+    elif t == "threshold_approval":
+        what = label(str(p.get("category", "expenses")))
+        amount = format_cents(int(p.get("threshold_cents", 0)))
+        line = f"{what} from {amount} needs the sponsor's prior written approval"
     else:
         line = rule.name
     return line[:1].upper() + line[1:]
@@ -679,9 +682,9 @@ def _ask_next(s: PolicySession) -> None:
     if gap.suggest_reason:
         said = any(gap.suggest_reason in m.text for m in s.messages if m.role == "assistant")
         why = (
-            "\nI'd go with the highlighted choice, for the same reason as before."
+            "\nI'd pick the first choice, for the same reason as before."
             if said
-            else f"\nI'd go with the highlighted choice. {gap.suggest_reason}"
+            else f"\nI'd pick the first choice. {gap.suggest_reason}"
         )
     s.messages.append(
         ChatMessage(
