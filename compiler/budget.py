@@ -34,6 +34,12 @@ LINE_LABELS: dict[str, str] = {
 LINE_RE = re.compile(
     r"^\s*(?P<label>[A-Za-z][A-Za-z ,&/()-]{1,60}?)\s*[:.\s]+\$\s?[\d,]+(?:\.\d{2})?\s*$"
 )
+# A table row whose cells extract onto separate lines: "Equipment" then "$18,000".
+SPLIT_ROW_RE = re.compile(
+    r"^[ \t]*(?P<label>[A-Za-z][A-Za-z ,&/()-]{1,60}?)[ \t]*\r?\n"
+    r"[ \t]*\$[ \t]?[\d,]+(?:\.\d{2})?[ \t]*$",
+    re.MULTILINE,
+)
 
 
 class BudgetItem(BaseModel):
@@ -59,19 +65,23 @@ def read_budget(pages: dict[int, str]) -> list[BudgetItem]:
     for page, text in sorted(pages.items()):
         if "budget" not in text.lower():
             continue
-        for raw in text.splitlines():
-            match = LINE_RE.match(raw)
-            if not match:
-                continue
-            key = _line_key(match.group("label"))
-            cents = parse_dollars_to_cents(raw)
-            citation = verify_citation(pages, page, raw.strip())
+        # Rows in page order, whether "Label: $X" on one line or split over two.
+        rows: list[tuple[int, str, str]] = []
+        offset = 0
+        for raw in text.splitlines(keepends=True):
+            if match := LINE_RE.match(raw.rstrip("\r\n")):
+                rows.append((offset, match.group("label"), raw.strip()))
+            offset += len(raw)
+        rows += [
+            (m.start(), m.group("label"), m.group(0).strip()) for m in SPLIT_ROW_RE.finditer(text)
+        ]
+        for _, label, quote in sorted(rows):
+            key = _line_key(label)
+            cents = parse_dollars_to_cents(quote)
+            citation = verify_citation(pages, page, quote)
             if key is None or cents is None or citation is None or key in items:
                 continue
             items[key] = BudgetItem(
-                line=key,
-                label=match.group("label").strip(),
-                allocated_cents=cents,
-                citation=citation,
+                line=key, label=label.strip(), allocated_cents=cents, citation=citation
             )
     return list(items.values())

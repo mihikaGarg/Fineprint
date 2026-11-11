@@ -44,3 +44,4 @@ One line each: date, decision, why.
 - 2026-11-09: Palette switched from magenta/yellow to Ocean Breeze: Deep Twilight ink and panels, Bright Teal Blue accent (Turquoise Surf in dark mode), Frosted Blue highlighter, Light Cyan paper tint. Verdict colors unchanged.
 - 2026-11-09: The site is light-only (no dark mode): very light blue page, white app sidebar, Light Cyan mission band. Why: the navy dark theme felt heavy.
 - 2026-11-09: Deploy = Vercel (web/, FINEPRINT_API_URL set to the API) + Render (render.yaml, editable pip install, uvicorn on $PORT). No key in config; ANTHROPIC_API_KEY is added in Render's dashboard and the app reads offline without it.
+- 2026-11-10: The budget reader also pairs table cells that PDF extraction puts on separate lines ("Equipment" then "$18,000"), citing both lines exactly. Why: real agreements put budgets in tables, and the full-length sample award (fixtures/grants/research_award.pdf) extracts that way.
