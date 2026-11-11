@@ -2,7 +2,15 @@ import type { NextConfig } from "next";
 
 // The app talks to the Fineprint API through this same origin, so one URL (or
 // one share link) serves both. Point FINEPRINT_API_URL elsewhere if needed.
-const API_URL = process.env.FINEPRINT_API_URL ?? "http://localhost:8000";
+// On Vercel a missing address would silently proxy to localhost, so fail the
+// build instead and say what to set.
+if (process.env.VERCEL && !process.env.FINEPRINT_API_URL) {
+  throw new Error(
+    "FINEPRINT_API_URL is not set. In Vercel: Settings → Environment Variables, add " +
+      "FINEPRINT_API_URL = your Render API address (e.g. https://fineprint-api.onrender.com), then redeploy.",
+  );
+}
+const API_URL = (process.env.FINEPRINT_API_URL ?? "http://localhost:8000").replace(/\/+$/, "");
 
 const nextConfig: NextConfig = {
   // The floating dev badge sits on top of the sidebar's Reset button.

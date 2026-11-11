@@ -20,7 +20,11 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       setState(await api<AppState>("/api/state"));
       setError(null);
     } catch {
-      setError("Can't reach the Fineprint API. Start it with: uvicorn api.main:app --port 8000");
+      setError(
+        window.location.hostname === "localhost"
+          ? "Can't reach the Fineprint API. Start it with: uvicorn api.main:app --port 8000"
+          : "Can't reach the Fineprint API. If it was asleep it takes about a minute to wake up; refresh shortly.",
+      );
     }
   }, []);
 
